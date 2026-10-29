@@ -658,7 +658,7 @@ button.heat-cell{cursor:pointer}button.heat-cell:hover{transform:scale(1.25);pos
 /* =========================================================
    Plan at a glance (final) — readable squares, centred, scrolls only when it must
    ========================================================= */
-.glance{margin-bottom:18px;--g-none:color-mix(in srgb,var(--muted) 22%,var(--surface));--g-out:color-mix(in srgb,var(--muted) 14%,transparent)}
+.glance{margin-bottom:18px;min-width:0;max-width:100%;overflow:hidden;--g-none:color-mix(in srgb,var(--muted) 22%,var(--surface));--g-out:color-mix(in srgb,var(--muted) 14%,transparent)}
 .glance-scroll{display:flex;width:100%;min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 2px 8px;scrollbar-width:thin}
 .glance-inner{--cell:13px;--gap:3px;flex:none;margin:0 auto}
 .glance-months{display:grid;grid-template-columns:repeat(var(--weeks),var(--cell));column-gap:var(--gap);height:18px;font-size:11px;line-height:14px;color:var(--muted);margin-bottom:4px}
@@ -688,7 +688,8 @@ button.heat-cell{cursor:pointer}button.heat-cell:hover{transform:scale(1.25);pos
    Phones: Overview shows Plan at a glance first, then the schedule, then progress
    ========================================================= */
 @media(max-width:900px){
-  .dashboard-grid{display:flex;flex-direction:column;gap:14px}
+  .dashboard-grid{display:flex;flex-direction:column;gap:14px;width:100%;min-width:0;max-width:100%}
+  .dashboard-grid>*,.dashboard-side>*{box-sizing:border-box;min-width:0;max-width:100%}
   .dashboard-side{display:contents}
   .dashboard-side>.glance{order:-1;margin:0}
   .dashboard-grid>.panel{order:0}

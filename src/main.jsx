@@ -6,6 +6,7 @@ import "./styles/global.css";
 import "./styles/layout.css";
 import "./styles/pages.css";
 import "./styles/polish.css";
+import "./styles/brand.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

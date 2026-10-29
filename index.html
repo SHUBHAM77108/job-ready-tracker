@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b7a5b" />
+    <link rel="icon" type="image/png" href="/Plan%20at%20a%20Glance%20Heatmap.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="description" content="Your personal Job-Ready Tracker" />
@@ -28,7 +29,7 @@
 .splash.is-leaving{opacity:0;transform:scale(1.02);pointer-events:none}
 .splash-inner{position:relative;z-index:1;width:min(92vw,1040px);display:flex;flex-direction:column;align-items:center;gap:clamp(14px,3vh,28px)}
 .splash-brand{display:flex;align-items:center;gap:10px}
-.splash-mark{width:38px;height:38px;border-radius:12px;background:#ffffff26;display:grid;place-items:center}
+.splash-mark{width:38px;height:38px;border-radius:12px;background:#ffffff26;display:grid;place-items:center;overflow:hidden}.splash-mark img{width:100%;height:100%;object-fit:cover}
 .splash-brand b{display:block;font-size:17px;line-height:1.15}.splash-brand small{display:block;opacity:.7;font-size:12px}
 .splash-card{width:100%;box-sizing:border-box;background:#ffffff1a;border:1px solid #ffffff2e;border-radius:clamp(18px,2.4vw,28px);padding:clamp(16px,3vw,40px);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .splash .ah{--ah-gap:clamp(3px,.65vw,9px)}
@@ -47,7 +48,7 @@
     <div id="root">
       <div class="splash" role="status" aria-live="polite" aria-busy="true">
         <div class="splash-inner">
-          <div class="splash-brand"><span class="splash-mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.7 1.8L21.5 18.5l-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z"/></svg></span><span><b>Job-Ready</b><small>Tracker</small></span></div>
+          <div class="splash-brand"><span class="splash-mark"><img src="/Plan%20at%20a%20Glance%20Heatmap.png" alt="" style="width:100%;height:100%;object-fit:cover"/></span><span><b>Job-Ready</b><small>Tracker</small></span></div>
           <div class="splash-card">
             <div class="splash-head"><p class="splash-title">Plan at a glance</p><span>365 days</span></div>
             <div class="ah" id="ah-boot" aria-hidden="true"></div>
