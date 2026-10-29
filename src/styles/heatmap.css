@@ -1,0 +1,39 @@
+/* =========================================================
+   Activity heatmap ("Plan at a glance" preview) + splash screen
+   One component (components/ActivityHeatmap.jsx) is used by the splash and by the login hero.
+   NOTE: the rules marked [boot] are duplicated inside index.html so the very first paint, before this bundle has
+   downloaded, looks identical. Keep both copies in sync.
+   ========================================================= */
+
+/* [boot] palette + grid + cell */
+.ah,.ah-legend{--ah-0:rgba(255,255,255,.13);--ah-1:rgba(126,232,189,.34);--ah-2:rgba(126,232,189,.6);--ah-3:rgba(126,232,189,.82);--ah-4:#a7f3d0}
+.ah{display:grid;grid-template-columns:repeat(var(--cols,21),minmax(0,1fr));gap:var(--ah-gap,3px);width:100%}
+.ah-cell{display:block;aspect-ratio:1;border-radius:18%;background:var(--from)}
+/* soft, staggered pulse between two legend shades: each cell has its own duration and (negative) delay */
+.ah-cell.is-live{animation:ahPulse var(--t,5s) ease-in-out var(--d,0s) infinite}
+@keyframes ahPulse{0%,38%,100%{background-color:var(--from)}56%,64%{background-color:var(--to)}}
+.ah-legend{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-top:10px;font-size:11px;opacity:.9}
+.ah-legend i{display:block;width:11px;height:11px;border-radius:3px}
+@media(prefers-reduced-motion:reduce){.ah-cell.is-live{animation:none}}
+
+/* [boot] splash screen */
+.splash{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:clamp(16px,4vw,48px);box-sizing:border-box;overflow:hidden;color:#fff;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:linear-gradient(150deg,#0e7a5a 0%,#0b4f3b 55%,#072b21 100%);opacity:1;transform:none;transition:opacity .45s ease,transform .45s ease}
+.splash:before,.splash:after{content:"";position:absolute;border-radius:50%;filter:blur(70px);pointer-events:none}
+.splash:before{width:380px;height:380px;background:#34d399;opacity:.28;top:-140px;right:-100px}
+.splash:after{width:340px;height:340px;background:#60a5fa;opacity:.22;bottom:-140px;left:-110px}
+.splash.is-leaving{opacity:0;transform:scale(1.02);pointer-events:none}
+.splash-inner{position:relative;z-index:1;width:min(92vw,1040px);display:flex;flex-direction:column;align-items:center;gap:clamp(14px,3vh,28px)}
+.splash-brand{display:flex;align-items:center;gap:10px}
+.splash-mark{width:38px;height:38px;border-radius:12px;background:#ffffff26;display:grid;place-items:center}
+.splash-brand b{display:block;font-size:17px;line-height:1.15}.splash-brand small{display:block;opacity:.7;font-size:12px}
+.splash-card{width:100%;box-sizing:border-box;background:#ffffff1a;border:1px solid #ffffff2e;border-radius:clamp(18px,2.4vw,28px);padding:clamp(16px,3vw,40px);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.splash .ah{--ah-gap:clamp(3px,.65vw,9px)}
+.splash-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:clamp(12px,2vw,24px)}
+.splash-title{margin:0;font-size:clamp(18px,2.4vw,30px);font-weight:800;letter-spacing:-.01em}
+.splash-head span{font-size:clamp(12px,1.4vw,16px);opacity:.75;white-space:nowrap}
+.splash .ah-legend{margin-top:clamp(10px,1.8vw,22px);gap:clamp(4px,.6vw,8px);font-size:clamp(11px,1.3vw,15px)}
+.splash .ah-legend i{width:clamp(11px,1.5vw,18px);height:clamp(11px,1.5vw,18px);border-radius:28%}
+.splash-label{margin:0;font-size:14px;opacity:.85}
+@media(max-height:700px){.splash-inner{width:min(92vw,820px)}}
+@media(max-height:560px){.splash-inner{width:min(92vw,620px)}.splash-brand{display:none}}
+@media(prefers-reduced-motion:reduce){.splash,.splash.is-leaving{transition:opacity .2s ease;transform:none}}

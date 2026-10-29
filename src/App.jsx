@@ -8,6 +8,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useTracker } from "./hooks/useTracker";
 import Sidebar from "./components/Sidebar";
 import BottomNav from "./components/BottomNav";
+import SplashScreen from "./components/SplashScreen";
 import { useReminders } from "./hooks/useReminders";
 import ProfileMenu from "./components/ProfileMenu";
 import Button from "./components/Button";
@@ -25,12 +26,25 @@ import WidgetPage from "./pages/WidgetPage";
 import { localDateString, roadmapDayForDate } from "./utils/dates";
 import { loadLocalState } from "./services/storage";
 
+const SPLASH_MIN_MS=900,SPLASH_FADE_MS=450;
+
 export default function App() {
- const {user,setUser,loading:authLoading,redirectError,clearRedirectError}=useAuth();
+ const {user,setUser,loading:authLoading}=useAuth();
  const [demoUser,setDemoUser]=useState(null);
  const effectiveUser=user||demoUser;
  const {state,update,loading:stateLoading,syncError}=useTracker(effectiveUser);
  useReminders(state,!!effectiveUser&&!stateLoading);
+ // Splash lifecycle: visible from the first paint until auth state is known (and, when signed in, the tracker data has loaded).
+ // SPLASH_MIN_MS only stops a sub-second flash; the real signal is `appReady`. It plays on start-up / full reload (and while
+ // data loads after a sign-in), never on route changes.
+ const appReady=!authLoading&&(!effectiveUser||!stateLoading);
+ const [minShown,setMinShown]=useState(false);
+ const [splashGone,setSplashGone]=useState(false);
+ useEffect(()=>{const t=window.setTimeout(()=>setMinShown(true),SPLASH_MIN_MS);return()=>window.clearTimeout(t);},[]);
+ const splashReady=appReady&&minShown;
+ useEffect(()=>{if(!splashReady){setSplashGone(false);return undefined;}const t=window.setTimeout(()=>setSplashGone(true),SPLASH_FADE_MS);return()=>window.clearTimeout(t);},[splashReady]);
+ const splashVisible=!splashReady||!splashGone;
+ const withSplash=node=><>{node}{splashVisible&&<SplashScreen leaving={splashReady} label={authLoading?"Starting up…":"Loading your workspace…"}/>}</>;
  const [selectedDay,setSelectedDay]=useState(1);
  const [mobileOpen,setMobileOpen]=useState(false);
  const [todayKey,setTodayKey]=useState(()=>localDateString());
@@ -51,13 +65,13 @@ export default function App() {
  const signOut=async()=>{if(firebaseEnabled&&auth)await logout();else setDemoUser(null);};
  const actualToday=roadmapDayForDate(state.settings.startDate);
  useEffect(()=>{if(!effectiveUser)return;const handler=()=>{const n=roadmapDayForDate(state.settings.startDate);setSelectedDay(Math.max(1,Math.min(Number(state.settings.durationDays)||60,n)));};window.addEventListener("job-ready-go-today",handler);return()=>window.removeEventListener("job-ready-go-today",handler);},[effectiveUser?.uid,state.settings.startDate,state.settings.durationDays]);
- if(authLoading)return <div className="loading-screen">Loading your account…</div>;
- if(!effectiveUser)return <AuthPage redirectError={redirectError} clearRedirectError={clearRedirectError}/>;
- if(stateLoading)return <div className="loading-screen">Loading your workspace…</div>;
- if(location.pathname==="/widget")return <WidgetPage state={state}/>;
+ if(authLoading)return withSplash(null);
+ if(!effectiveUser)return withSplash(<AuthPage/>);
+ if(stateLoading)return withSplash(null);
+ if(location.pathname==="/widget")return withSplash(<WidgetPage state={state}/>);
  const titleMap={"/":"Overview","/daily":"Daily tracker","/roadmap":"Learning roadmap","/projects":"Projects","/applications":"Job applications","/resources":"Timetable & resources","/settings":"Settings","/analytics":"Analytics","/history":"Activity history"};
  const routeTitle=titleMap[location.pathname]||"Workspace";
- return <div className="app-shell">
+ return withSplash(<div className="app-shell">
  <Sidebar mobileOpen={mobileOpen} onNavigate={()=>setMobileOpen(false)} roadmapCount={state.roadmap.length} projectCount={state.projects.length}/>
  <main className="main-area"><header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setMobileOpen(true)} aria-label="Open menu"><Menu size={20}/></button><div className="breadcrumbs">Workspace <span>›</span> <strong>{routeTitle}</strong></div></div><div className="topbar-actions"><label className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search workspace…"/></label><button className="icon-button" title="Toggle theme" onClick={()=>setThemeMode(v=>v==="system"?(systemDark?"light":"dark"):v==="dark"?"light":"dark")}>{dark?<Sun size={18}/>:<Moon size={18}/>}</button><button className="icon-button" title="Reminder settings" onClick={()=>navigate("/settings")}><Bell size={18}/></button><ProfileMenu user={effectiveUser} onLogout={signOut}/></div></header>
  <div className="page-content">{syncError&&<div className="sync-warning">{syncError}</div>}{toast&&<div className="toast"><span>{toast.message}</span>{state.undoItem&&<button onClick={undo}>Undo</button>}<button aria-label="Dismiss" onClick={()=>setToast(null)}>×</button></div>}{state.undoItem&&!toast&&<div className="toast"><span>Item removed.</span><button onClick={undo}>Undo</button><button aria-label="Dismiss" onClick={()=>update(s=>({...s,undoItem:null}))}>×</button></div>}
@@ -73,5 +87,5 @@ export default function App() {
  <Route path="/history" element={<History state={state} setSelectedDay={setSelectedDay} navigate={navigate}/>}/>
  <Route path="*" element={<Navigate to="/" replace/>}/>
  </Routes>
- <footer className="footer">Made for steady progress <span>•</span> Your next opportunity starts today.</footer></div></main><BottomNav menuOpen={mobileOpen} onMore={()=>setMobileOpen(true)}/></div>;
+ <footer className="footer">Made for steady progress <span>•</span> Your next opportunity starts today.</footer></div></main><BottomNav menuOpen={mobileOpen} onMore={()=>setMobileOpen(true)}/></div>);
 }

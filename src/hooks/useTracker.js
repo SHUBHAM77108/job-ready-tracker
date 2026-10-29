@@ -9,6 +9,7 @@ import { initialState } from "../data";
 // A live listener (onSnapshot) applies changes made on another device within a second or two, so laptop and phone
 // signed in to the same account always show the same data.
 const SAVE_DELAY = 700;
+const LOAD_TIMEOUT_MS = 8000;   // if the first cloud read hangs, continue with the on-device copy (a banner explains why)
 const META = ["_rev", "_client"];
 const stripMeta = (data) => { const copy = { ...data }; META.forEach(k => delete copy[k]); return copy; };
 // Turn a Firestore error into something you can act on (the code is shown so the real cause is visible).
@@ -45,7 +46,7 @@ export function useTracker(user) {
       let next=local;
       if (cloud) {
         try {
-          const snap=await getDoc(doc(db,"users",user.uid,"tracker","main"));
+          const snap=await Promise.race([getDoc(doc(db,"users",user.uid,"tracker","main")),new Promise((_,reject)=>window.setTimeout(()=>reject(Object.assign(new Error("Cloud read timed out"),{code:"unavailable"})),LOAD_TIMEOUT_MS))]);
           if (snap.exists()) {
             const data=snap.data();
             lastRev.current=Number(data._rev)||0;
