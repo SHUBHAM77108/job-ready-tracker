@@ -26,7 +26,7 @@ import { localDateString, roadmapDayForDate } from "./utils/dates";
 import { loadLocalState } from "./services/storage";
 
 export default function App() {
- const {user,setUser,loading:authLoading}=useAuth();
+ const {user,setUser,loading:authLoading,redirectError,clearRedirectError}=useAuth();
  const [demoUser,setDemoUser]=useState(null);
  const effectiveUser=user||demoUser;
  const {state,update,loading:stateLoading,syncError}=useTracker(effectiveUser);
@@ -52,7 +52,7 @@ export default function App() {
  const actualToday=roadmapDayForDate(state.settings.startDate);
  useEffect(()=>{if(!effectiveUser)return;const handler=()=>{const n=roadmapDayForDate(state.settings.startDate);setSelectedDay(Math.max(1,Math.min(Number(state.settings.durationDays)||60,n)));};window.addEventListener("job-ready-go-today",handler);return()=>window.removeEventListener("job-ready-go-today",handler);},[effectiveUser?.uid,state.settings.startDate,state.settings.durationDays]);
  if(authLoading)return <div className="loading-screen">Loading your account…</div>;
- if(!effectiveUser)return <AuthPage/>;
+ if(!effectiveUser)return <AuthPage redirectError={redirectError} clearRedirectError={clearRedirectError}/>;
  if(stateLoading)return <div className="loading-screen">Loading your workspace…</div>;
  if(location.pathname==="/widget")return <WidgetPage state={state}/>;
  const titleMap={"/":"Overview","/daily":"Daily tracker","/roadmap":"Learning roadmap","/projects":"Projects","/applications":"Job applications","/resources":"Timetable & resources","/settings":"Settings","/analytics":"Analytics","/history":"Activity history"};

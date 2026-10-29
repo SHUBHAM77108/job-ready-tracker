@@ -8,7 +8,7 @@ import { getFirestore, initializeFirestore } from "firebase/firestore";
 const env = import.meta.env;
 const config = {
   apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyBfinDa9-vOFuj77w9csTiPLZz8ac7VDig",
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "build-skills-9320a.firebaseapp.com",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "build-skills-9320a.web.app",
   projectId: env.VITE_FIREBASE_PROJECT_ID || "build-skills-9320a",
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "build-skills-9320a.firebasestorage.app",
   messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "119462712511",

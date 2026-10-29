@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BarChart3, BookOpen, CalendarCheck, Cloud, Eye, EyeOff, Sparkles } from "lucide-react";
 import Button from "../components/Button";
 import { firebaseEnabled } from "../firebase";
@@ -6,9 +6,10 @@ import { loginWithEmail, loginWithGoogle, registerWithEmail, resetPassword } fro
 
 const ART_CELLS=Array.from({length:21*7},(_,i)=>{const h=(i*2654435761>>>0)%100;const bias=i/(21*7);return h<18?0:h<38?1:h<62-bias*10?2:h<84?3:4;});
 // One screen, no scrolling: the card is compact, the heading shrinks on short screens, optional text hides itself.
-export default function AuthPage() {
+export default function AuthPage({redirectError,clearRedirectError}) {
   const [mode,setMode]=useState("login"),[name,setName]=useState(""),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[show,setShow]=useState(false),[error,setError]=useState(""),[info,setInfo]=useState(""),[busy,setBusy]=useState(false);
   const signup=mode==="signup";
+  useEffect(()=>{if(redirectError){setError(friendlyError(redirectError));clearRedirectError?.();}},[redirectError,clearRedirectError]);
   const switchMode=m=>{setMode(m);setError("");setInfo("");};
   const submit=async e=>{e.preventDefault();setError("");setInfo("");setBusy(true);try{if(signup)await registerWithEmail(name,email,password);else await loginWithEmail(email,password);}catch(err){setError(friendlyError(err));}finally{setBusy(false);}};
   const google=async()=>{setError("");setInfo("");setBusy(true);try{await loginWithGoogle();}catch(err){setError(friendlyError(err));}finally{setBusy(false);}};
@@ -40,4 +41,4 @@ export default function AuthPage() {
     <div className="art-quote">Consistency beats intensity.</div>
   </aside></main>;
 }
-function friendlyError(err){const code=err?.code||"";if(code.includes("auth/invalid-credential")||code.includes("auth/wrong-password")||code.includes("auth/user-not-found"))return "Email ya password match nahi hua. Details check karo.";if(code.includes("auth/email-already-in-use"))return "Is email ka account already hai. Login try karo.";if(code.includes("auth/weak-password"))return "Password kam se kam 6 characters ka rakho.";if(code.includes("auth/too-many-requests"))return "Bahut zyada koshish ho gayi. Thodi der baad try karo.";if(code.includes("auth/popup-closed-by-user"))return "Google sign-in popup close ho gaya.";if(code.includes("auth/popup-blocked"))return "Browser ne popup block kiya. Popup allow karke dobara try karo.";if(code.includes("auth/unauthorized-domain"))return "Firebase Authentication → Settings → Authorized domains mein is site ka domain (localhost / live domain) add karo.";if(code.includes("auth/operation-not-allowed"))return "Firebase console mein ye sign-in method (Email/Password ya Google) enable karo.";return err?.message||"Sign-in failed. Please try again.";}
+function friendlyError(err){const code=err?.code||"";if(code.includes("auth/invalid-credential")||code.includes("auth/wrong-password")||code.includes("auth/user-not-found"))return "Email ya password match nahi hua. Details check karo.";if(code.includes("auth/email-already-in-use"))return "Is email ka account already hai. Login try karo.";if(code.includes("auth/weak-password"))return "Password kam se kam 6 characters ka rakho.";if(code.includes("auth/too-many-requests"))return "Bahut zyada koshish ho gayi. Thodi der baad try karo.";if(code.includes("auth/popup-closed-by-user")||code.includes("auth/cancelled-popup-request")||code.includes("auth/redirect-cancelled-by-user"))return "Google sign-in was cancelled. You can try again.";if(code.includes("auth/popup-blocked"))return "Your browser blocked the sign-in popup. Allow popups or try on a mobile browser.";if(code.includes("auth/unauthorized-domain"))return "This site domain is not authorized. Add the exact app hostname under Firebase Authentication → Settings → Authorized domains.";if(code.includes("auth/operation-not-allowed"))return "Enable Google and Email/Password sign-in in Firebase Authentication → Sign-in method.";if(code.includes("auth/network-request-failed"))return "Network error during sign-in. Check your connection and try again.";if(code.includes("auth/invalid-api-key"))return "Firebase rejected this app's API key. Check its web app configuration.";return code?`${err?.message||"Sign-in failed."} (${code})`:err?.message||"Sign-in failed. Please try again.";}
