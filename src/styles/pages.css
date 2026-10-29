@@ -1,0 +1,39 @@
+@media(max-width:1200px){.page-content{padding:25px 22px}.topbar{padding:0 22px}.sidebar{width:220px}.main-area{margin-left:220px}.stats-grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}.projects-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-grid{grid-template-columns:minmax(0,1.2fr) minmax(260px,.8fr)}}
+@media(max-width:900px){.sidebar{transform:translateX(-100%);transition:transform .22s;width:270px}.sidebar.open{transform:translateX(0);box-shadow:15px 0 50px #0002}.main-area{margin-left:0}.mobile-menu{display:grid}.nav-scrim{display:block;position:fixed;inset:0;background:#0a2118a0;border:0;z-index:25}.topbar{height:64px;padding:0 18px}.page-content{padding:25px 18px}.dashboard-grid,.daily-layout,.resource-layout{grid-template-columns:1fr}.auth-screen{grid-template-columns:1fr}.auth-art{display:none}.settings-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.topbar{padding:0 10px}.topbar-actions{gap:3px}.search-box{width:36px;padding:0 9px;border:0;background:transparent}.search-box input{width:0;min-width:0;padding:0}.search-box:focus-within{position:absolute;left:52px;right:195px;width:auto;background:var(--surface);border:1px solid var(--line);z-index:2}.search-box:focus-within input{width:100%}.profile-trigger-copy{display:none}.profile-trigger{padding:4px}.profile-trigger>svg{display:none}.breadcrumbs{font-size:10px}.page-content{padding:20px 12px}.page-header{align-items:flex-start;flex-direction:column;margin-bottom:18px}.stats-grid.four{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat-card{padding:12px 10px;gap:8px}.stat-icon{width:34px;height:34px}.stat-copy strong{font-size:18px}.stat-copy span,.stat-copy small{font-size:9px}.panel{padding:15px;border-radius:12px}.schedule-row{grid-template-columns:10px 58px minmax(0,1fr);gap:7px}.schedule-row>.status-pill{grid-column:3;justify-self:start}.schedule-task span{white-space:normal}.day-switcher{flex-wrap:wrap;justify-content:center;padding:12px}.day-switcher>div{order:-1;width:100%;margin-bottom:6px}.day-switcher .button{padding:8px}.task-card{grid-template-columns:27px minmax(0,1fr);padding:12px 9px;gap:9px}.task-card-actions{grid-column:2;flex-direction:row;flex-wrap:wrap;align-items:center}.task-card-actions select{max-width:110px}.task-card-main p{font-size:10px}.task-title-line h3{font-size:13px}.search-inline{align-items:flex-start;flex-direction:column}.search-inline input{width:100%;flex:auto}.projects-grid{grid-template-columns:1fr}.project-cover{height:185px}.form-two{grid-template-columns:1fr;gap:0}.roadmap-tools{align-items:flex-start;flex-direction:column}.tool-actions{width:100%}.analytics-day{grid-template-columns:80px 1fr 35px;gap:8px}.history-row{grid-template-columns:1fr 20px;gap:5px}.history-row span:nth-child(2){display:none}.auth-screen{padding:14px}.auth-card{padding:8px}.auth-card h1{font-size:37px}.auth-art{display:none}.footer{font-size:9px;flex-wrap:wrap}.toast{font-size:10px;flex-wrap:wrap}.profile-dropdown{right:-5px}.profile-trigger-copy{display:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+/* Task editor and roadmap selection refinements */
+.daily-task-toolbar{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:14px 0}.daily-task-toolbar>label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}.daily-task-toolbar input{max-width:190px}.modal-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(2,10,7,.72);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto}.task-modal,.confirm-modal{width:min(680px,100%);max-height:calc(100vh - 40px);overflow:auto;box-shadow:0 24px 80px rgba(0,0,0,.4)}.confirm-modal{width:min(480px,100%)}.confirm-modal p{color:var(--muted);line-height:1.6}.roadmap-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:14px;margin:16px 0}.roadmap-select-card{width:100%;text-align:left;display:flex;flex-direction:column;gap:12px;color:var(--ink);cursor:pointer;transition:border-color .15s,transform .15s}.roadmap-select-card:hover{transform:translateY(-2px);border-color:var(--green)}.roadmap-select-card.selected{border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset}.roadmap-card-top{display:flex;justify-content:space-between;align-items:center;color:var(--green)}.roadmap-select-card>strong{font-size:16px}.roadmap-select-card>small{color:var(--muted)}.roadmap-card-open{font-size:12px;color:var(--green);font-weight:600}.task-add-row{display:none}
+
+/* Focused daily navigation and schedule management */
+.day-switcher-current{min-width:180px;align-items:center;gap:3px!important}
+.day-jump{display:flex;align-items:center;gap:7px;margin-top:5px;color:var(--muted);font-size:10px}
+.day-jump input{width:132px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font-size:10px}
+.schedule-manager{margin-bottom:18px}
+.schedule-manager-heading{align-items:center}
+.schedule-list-toolbar{display:flex;align-items:center;gap:12px;margin:15px 0 5px}
+.schedule-list-toolbar .search-inline{flex:1;margin:0;display:flex;align-items:center;gap:10px}
+.schedule-list-toolbar .search-inline input{flex:1;min-width:0}
+.schedule-manager-list{display:flex;flex-direction:column}
+.schedule-manager-item{display:flex;align-items:center;gap:14px;padding:15px 0;border-bottom:1px solid var(--line)}
+.schedule-manager-item:last-child{border-bottom:0}
+.schedule-manager-copy{flex:1;min-width:0}
+.schedule-manager-copy>strong{font-size:13px}
+.schedule-manager-copy>p{margin:4px 0 8px;color:var(--muted);font-size:11px}
+.schedule-manager-meta{display:flex;flex-wrap:wrap;gap:7px}
+.schedule-manager-meta span{padding:4px 7px;border-radius:6px;background:var(--bg);color:var(--muted);font-size:10px;text-transform:capitalize}
+.schedule-manager-actions{display:flex;gap:7px;flex-shrink:0}
+.schedule-manager-actions .button{font-size:11px;padding:8px 10px}
+.schedule-modal{width:min(700px,100%);max-height:calc(100vh - 36px);overflow:auto;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.schedule-modal .panel-heading{position:sticky;top:-1px;background:var(--surface);z-index:1;padding-bottom:12px}
+@media(max-width:700px){.day-switcher-current{order:-1;width:100%;margin-bottom:5px}.day-jump{justify-content:center}.schedule-manager-heading{align-items:flex-start;flex-direction:column}.schedule-list-toolbar{align-items:stretch}.schedule-manager-item{align-items:flex-start;flex-wrap:wrap}.schedule-manager-copy{min-width:calc(100% - 58px)}.schedule-manager-actions{width:100%;padding-left:52px}.schedule-manager-actions .button{flex:1;justify-content:center}.schedule-list-toolbar .search-inline{align-items:stretch;flex-direction:column}}
+
+/* Missing styles for newer features (roadmap day groups, empty-state actions, work-log editor) */
+.roadmap-day-group{padding:14px 0;border-top:1px solid var(--line)}
+.roadmap-day-group:first-of-type{border-top:0;padding-top:4px}
+.roadmap-day-group .summary-pair{margin-bottom:10px}
+.empty-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.work-log-editor{display:flex;flex-direction:column;gap:10px;padding:14px;margin:6px 0;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.work-log-editor>strong{font-size:12px}
+/* Task card: actions wrap in rows instead of one tall column */
+@media(min-width:601px){.task-card-actions{flex-direction:row;flex-wrap:wrap;justify-content:flex-end;max-width:300px}}
