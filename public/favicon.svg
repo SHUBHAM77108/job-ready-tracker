@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#075742" />
+  <image
+    href="/Plan%20at%20a%20Glance%20Heatmap.png"
+    x="3"
+    y="16"
+    width="58"
+    height="32"
+    preserveAspectRatio="xMidYMid meet"
+  />
+</svg>

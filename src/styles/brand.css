@@ -1,12 +1,14 @@
-.brand-mark-image,
-.splash-mark img {
+.brand-heatmap-logo {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
+  width: 96px;
+  max-width: 40vw;
+  height: auto;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 
-.splash-mark {
-  overflow: hidden;
+@media (max-width: 380px) {
+  .brand-heatmap-logo {
+    width: 82px;
+  }
 }

@@ -15,7 +15,7 @@ export default function AuthPage() {
   const google=async()=>{setError("");setInfo("");setBusy(true);try{await loginWithGoogle();}catch(err){setError(friendlyError(err));}finally{setBusy(false);}};
   const forgot=async()=>{setError("");setInfo("");if(!email.trim()){setError("Pehle upar email likho, phir 'Forgot password' dabao.");return;}try{await resetPassword(email);setInfo("Password reset email bhej diya. Inbox (aur spam) check karo.");}catch(err){setError(friendlyError(err));}};
   return <main className="auth-screen"><section className="auth-card">
-    <div className="auth-brand"><span className="brand-mark auth-mark"><img className="brand-mark-image" src="/Plan%20at%20a%20Glance%20Heatmap.png" alt=""/></span><span><strong>Job-Ready</strong><small>Tracker</small></span></div>
+    <div className="auth-brand"><img className="brand-heatmap-logo" src="/Plan%20at%20a%20Glance%20Heatmap.png" alt="Job-Ready Tracker logo"/><span><strong>Job-Ready</strong><small>Tracker</small></span></div>
     <h1>{signup?"Create your account":"Welcome back"}</h1>
     <p className="auth-lede">{signup?"Start tracking your learning, projects and applications.":"Pick up right where you left off — on any device."}</p>
     <div className="auth-tabs" role="tablist"><button role="tab" aria-selected={!signup} className={!signup?"active":""} onClick={()=>switchMode("login")}>Login</button><button role="tab" aria-selected={signup} className={signup?"active":""} onClick={()=>switchMode("signup")}>Sign up</button></div>

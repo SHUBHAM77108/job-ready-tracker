@@ -5,7 +5,7 @@ import ActivityHeatmap, { HeatmapLegend } from "./ActivityHeatmap";
 export default function SplashScreen({ leaving = false, label = "Loading…" }) {
   return <div className={`splash${leaving ? " is-leaving" : ""}`} role="status" aria-live="polite" aria-busy={!leaving}>
     <div className="splash-inner">
-      <div className="splash-brand"><span className="splash-mark"><img src="/Plan%20at%20a%20Glance%20Heatmap.png" alt="" /></span><span><b>Job-Ready</b><small>Tracker</small></span></div>
+      <div className="splash-brand"><img className="brand-heatmap-logo" src="/Plan%20at%20a%20Glance%20Heatmap.png" alt="Job-Ready Tracker logo"/><span><b>Job-Ready</b><small>Tracker</small></span></div>
       <div className="splash-card">
         <div className="splash-head"><p className="splash-title">Plan at a glance</p><span>365 days</span></div>
         <ActivityHeatmap />
