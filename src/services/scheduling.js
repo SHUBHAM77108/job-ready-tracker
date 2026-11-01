@@ -94,7 +94,7 @@ export const ruleOccurs = (rule, day, startDate) => {
 
 const hasContent = (log) => !!(log?.note?.trim() || log?.url?.trim() || Number(log?.minutes) > 0);
 export const isUnstarted = (task) =>
-  (!task.status || ["upcoming", "ready", "pending"].includes(task.status)) && !(task.workLogs || []).some(hasContent);
+  (!task.status || ["upcoming", "ready", "pending", "missed"].includes(task.status)) && !(task.workLogs || []).some(hasContent);
 
 /* ---------- recurring rules (existing feature) ---------- */
 export function applyRule(days, rule, startDate) {
@@ -187,6 +187,86 @@ function freeSlot(busy, minutes, windowStart, windowEnd) {
   return cursor + minutes <= windowEnd ? cursor : null;
 }
 
+// The Daily-tracker task that belongs to a roadmap topic.
+export const topicTask = (topic, roadmapId, start, end) => ({
+  id: makeId(), name: topic.title, description: topic.description || topic.phase || "",
+  start, end, status: "upcoming", required: true, workLogs: [],
+  topicId: topic.id, roadmapId, source: "roadmap",
+});
+
+/* ---------- roadmap topics shown in daily tasks ---------- */
+// A timetable row such as "Concept study (today's roadmap topic)" is a placeholder: it shows which roadmap topic(s) are planned for that day.
+export const isRoadmapSlot = (task) => !!task && !task.topicId && /roadmap\s*topic|^\s*concept study/i.test(task.name || "");
+export const activeRoadmapTopics = (state) => {
+  const list = state.roadmaps || [];
+  const active = list.find((r) => r.id === state.activeRoadmapId) || list[0];
+  return active?.topics || state.roadmap || [];
+};
+export const topicsOnDay = (state, day) => activeRoadmapTopics(state).filter((t) => Number(t.day) === Number(day));
+
+// Turns newly added roadmap topics into Daily tasks.
+//  - topic has a time (start/end)            -> a task exactly at that time on its day
+//  - no time, day has a "Concept study" slot -> no extra task: the slot shows the topic
+//  - no time, no such slot                   -> a task in the first free slot of that day (moves to a later day only if the day is full)
+// Topics without a day, completed topics and topics that already have a task are skipped.
+export function placeNewTopics({ topics, days, duration, roadmapId = null, minutes = 60 }) {
+  let next = { ...days };
+  const scheduled = new Set();
+  Object.values(next).forEach((v) => (v?.tasks || []).forEach((t) => t.topicId && scheduled.add(t.topicId)));
+  const auto = [], placedDay = {};
+  let created = 0, viaSlot = 0, skipped = 0;
+  for (const topic of topics) {
+    const d = Number(topic.day);
+    if (!(d >= 1 && d <= duration) || topic.completed || scheduled.has(topic.id)) continue;
+    const start = toMin(topic.start);
+    if (start !== null) {
+      let end = toMin(topic.end);
+      if (end === null || end <= start) end = Math.min(24 * 60, start + minutes);
+      const old = next[d] || { tasks: [] };
+      next[d] = { ...old, tasks: [...(old.tasks || []), topicTask(topic, roadmapId, fromMin(start), fromMin(end))] };
+      created++;
+      continue;
+    }
+    if ((next[d]?.tasks || []).some((t) => isActive(t) && isRoadmapSlot(t))) { viaSlot++; continue; }
+    auto.push(topic);
+  }
+  if (auto.length) {
+    const r = scheduleTopics({ topics: auto, days: next, duration, roadmapId, minutes });
+    next = r.days; created += r.created; skipped += r.skipped; Object.assign(placedDay, r.placedDay);
+  }
+  return { days: next, created, viaSlot, skipped, placedDay };
+}
+
+// First task linked to a topic: { day, task } or null.
+export const linkedTopicTask = (days, topicId) => {
+  for (const [d, v] of Object.entries(days || {})) {
+    const task = (v?.tasks || []).find((t) => t.topicId === topicId);
+    if (task) return { day: Number(d), task };
+  }
+  return null;
+};
+// Removes the not-yet-started tasks of the given topics. Returns the new days plus what was removed (for Undo).
+export function removeTopicTasks(days, topicIds) {
+  const ids = new Set(topicIds), next = { ...days }, removed = [];
+  for (const [d, v] of Object.entries(next)) {
+    const list = v?.tasks || [];
+    const kept = list.filter((t) => { const drop = ids.has(t.topicId) && isUnstarted(t); if (drop) removed.push({ day: Number(d), item: t }); return !drop; });
+    if (kept.length !== list.length) next[d] = { ...v, tasks: kept };
+  }
+  return { days: next, removed };
+}
+// When topics move to another day (spread / undo), their not-yet-started tasks follow them. `assign` = { topicId: day }.
+export function retargetTopicTasks(days, assign) {
+  const next = { ...days }, moving = [];
+  for (const [d, v] of Object.entries(next)) {
+    const list = v?.tasks || [];
+    const keep = list.filter((t) => { const to = t.topicId && assign[t.topicId]; if (to && Number(to) !== Number(d) && isUnstarted(t)) { moving.push({ to: Number(to), task: t }); return false; } return true; });
+    if (keep.length !== list.length) next[d] = { ...v, tasks: keep };
+  }
+  moving.forEach(({ to, task }) => { const old = next[to] || { tasks: [] }; next[to] = { ...old, tasks: [...(old.tasks || []), task] }; });
+  return next;
+}
+
 export function scheduleTopics({ topics, days, duration, startDay = 1, perDay = 2, minutes = 60, windowStart = "09:00", windowEnd = "21:00", roadmapId = null }) {
   const ws = toMin(windowStart) ?? 540, we = toMin(windowEnd) ?? 1260;
   const next = { ...days };
@@ -209,11 +289,7 @@ export function scheduleTopics({ topics, days, duration, startDay = 1, perDay = 
       const busy = (old.tasks || []).filter(isActive).map(taskRange).filter(Boolean);
       const slot = freeSlot(busy, minutes, ws, we);
       if (slot !== null) {
-        next[d] = { ...old, tasks: [...(old.tasks || []), {
-          id: makeId(), name: topic.title, description: topic.description || topic.phase || "",
-          start: fromMin(slot), end: fromMin(slot + minutes), status: "upcoming", required: true, workLogs: [],
-          topicId: topic.id, roadmapId, source: "roadmap",
-        }] };
+        next[d] = { ...old, tasks: [...(old.tasks || []), topicTask(topic, roadmapId, fromMin(slot), fromMin(slot + minutes))] };
         placedDay[topic.id] = d; created++; if (d !== target) moved++;
         placed = true; break;
       }

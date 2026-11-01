@@ -1,0 +1,150 @@
+/* =========================================================
+   Task status colours, Overview timeline, Daily tracker highlight, bell icon
+   (loaded last so it wins over the older .sched-* / status rules)
+   ========================================================= */
+:root{
+  --st-progress:var(--green);   /* user pressed Start            */
+  --st-now:var(--warn);         /* time slot running, not started */
+  --st-next:var(--info);        /* first task after now          */
+  --st-upcoming:var(--muted);
+  --st-pending:#8b5cf6;         /* time over, can still be done  */
+  --st-missed:var(--danger);    /* not completed                 */
+  --st-paused:var(--warn);
+  --st-skipped:var(--muted);
+  --st-completed:var(--green);
+}
+:root[data-theme="dark"]{--st-pending:#b79bff}
+
+@keyframes tl-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 60%,transparent)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes tl-blink{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* ---------- status pills (Overview + Daily tracker + task detail) ---------- */
+.status-pill.st-progress,.tl-pill.st-progress{--c:var(--st-progress)}
+.status-pill.st-now,.tl-pill.st-now{--c:var(--st-now)}
+.status-pill.st-next,.tl-pill.st-next{--c:var(--st-next)}
+.status-pill.st-upcoming,.status-pill.st-ready,.tl-pill.st-upcoming{--c:var(--st-upcoming)}
+.status-pill.st-pending,.tl-pill.st-pending{--c:var(--st-pending)}
+.status-pill.st-missed,.tl-pill.st-missed{--c:var(--st-missed)}
+.status-pill.st-paused,.tl-pill.st-paused{--c:var(--st-paused)}
+.status-pill.st-skipped,.tl-pill.st-skipped{--c:var(--st-skipped)}
+.status-pill.st-completed,.tl-pill.st-completed{--c:var(--st-completed)}
+.status-pill[class*="st-"],.tl-pill{background:color-mix(in srgb,var(--c,var(--muted)) 16%,transparent);color:var(--c,var(--muted))}
+.status-pill.st-skipped{text-decoration:line-through}
+
+/* ---------- top banner ---------- */
+.upnext{--c:var(--muted);border-color:color-mix(in srgb,var(--c) 40%,var(--line));background:color-mix(in srgb,var(--c) 8%,var(--surface))}
+.upnext.k-progress{--c:var(--st-progress)}
+.upnext.k-now{--c:var(--st-now)}
+.upnext.k-next{--c:var(--st-next)}
+.upnext.k-complete,.upnext.k-cleared{--c:var(--green)}
+.upnext-kind{background:color-mix(in srgb,var(--c) 18%,transparent);color:var(--c);display:inline-flex;align-items:center;gap:7px}
+.upnext.k-progress .upnext-kind,.upnext.k-now .upnext-kind,.upnext.k-next .upnext-kind{background:var(--c);color:#fff}
+:root[data-theme="dark"] .upnext.k-progress .upnext-kind,:root[data-theme="dark"] .upnext.k-now .upnext-kind,:root[data-theme="dark"] .upnext.k-next .upnext-kind{color:#0c1a14}
+.upnext.k-progress .upnext-kind::before,.upnext.k-now .upnext-kind::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;animation:tl-blink 1.4s ease-in-out infinite}
+
+/* ---------- Overview timeline ---------- */
+.tl-list{--tl-time:50px;--tl-rail:22px;display:flex;flex-direction:column;padding:2px 0}
+.tl-group{display:contents}
+.tl-row{display:grid;grid-template-columns:var(--tl-time) var(--tl-rail) minmax(0,1fr);column-gap:6px;align-items:stretch;width:100%;position:relative}
+.tl-time{display:flex;flex-direction:column;align-items:flex-end;padding-top:12px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tl-time b{font-size:13px;line-height:20px;font-weight:750;color:var(--ink)}
+.tl-time small{font-size:11px;line-height:14px;color:var(--muted)}
+
+.tl-rail{position:relative}
+.tl-rail::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--line)}
+.tl-list>.tl-row:first-child>.tl-rail::before,.tl-list>.tl-group:first-child>.tl-row:first-child>.tl-rail::before{top:20px}
+.tl-list>.tl-row:last-child>.tl-rail::before,.tl-list>.tl-group:last-child>.tl-row:last-child>.tl-rail::before{bottom:auto;height:22px}
+.tl-dot{position:absolute;z-index:1;left:50%;top:15px;width:14px;height:14px;margin-left:-7px;box-sizing:border-box;display:grid;place-items:center;border-radius:50%;border:2px solid var(--c,var(--muted));background:var(--surface);color:var(--surface)}
+
+.tl-item{--c:var(--muted);cursor:pointer;outline:none}
+.tl-item.st-progress{--c:var(--st-progress)}
+.tl-item.st-now{--c:var(--st-now)}
+.tl-item.st-next{--c:var(--st-next)}
+.tl-item.st-pending{--c:var(--st-pending)}
+.tl-item.st-missed{--c:var(--st-missed)}
+.tl-item.st-paused{--c:var(--st-paused)}
+.tl-item.st-completed{--c:var(--st-completed)}
+.tl-item.st-progress .tl-dot,.tl-item.st-now .tl-dot,.tl-item.st-completed .tl-dot{background:var(--c)}
+.tl-item.st-next .tl-dot,.tl-item.st-pending .tl-dot,.tl-item.st-missed .tl-dot,.tl-item.st-paused .tl-dot{background:color-mix(in srgb,var(--c) 28%,var(--surface))}
+.tl-item.is-current .tl-dot{animation:tl-pulse 1.6s ease-out infinite,tl-blink 1.6s ease-in-out infinite}
+
+.tl-card{display:flex;flex-direction:column;gap:4px;min-width:0;margin:2px 0 4px;padding:9px 12px;border:1px solid transparent;border-radius:12px;transition:background .15s,border-color .15s}
+.tl-item:hover .tl-card{background:color-mix(in srgb,var(--muted) 8%,transparent)}
+.tl-item:focus-visible .tl-card{outline:2px solid var(--green);outline-offset:1px}
+.tl-item.is-current .tl-card{border-color:color-mix(in srgb,var(--c) 55%,var(--line));background:color-mix(in srgb,var(--c) 10%,var(--surface));box-shadow:0 4px 16px color-mix(in srgb,var(--c) 12%,transparent)}
+.tl-item.is-next .tl-card{border-color:color-mix(in srgb,var(--c) 40%,var(--line));background:color-mix(in srgb,var(--c) 6%,var(--surface))}
+.tl-item.has-conflict .tl-card{border-style:dashed;border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}
+.tl-item.is-current .tl-time b{color:var(--c)}
+
+.tl-head{display:flex;align-items:center;flex-wrap:wrap;gap:3px 7px;min-height:20px}
+.tl-name{font-size:14px;line-height:20px;font-weight:750;min-width:0;overflow-wrap:anywhere}
+.tl-item.st-completed .tl-name{text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted) 60%,transparent);color:var(--muted)}
+.tl-item.st-skipped .tl-name{color:var(--muted);text-decoration:line-through}
+.tl-live{display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:2px 8px;border-radius:99px;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c);font-size:10px;font-weight:850;letter-spacing:.06em;line-height:16px}
+.tl-live i{width:7px;height:7px;border-radius:50%;background:var(--c);animation:tl-pulse 1.6s ease-out infinite,tl-blink 1.6s ease-in-out infinite}
+.tl-desc{font-size:12.5px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+.tl-foot{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;min-height:26px}
+.tl-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:750;line-height:16px;white-space:nowrap}
+.tl-timing{flex:1 1 96px;min-width:0;display:inline-flex;align-items:center;flex-wrap:wrap;gap:3px 6px;font-size:11.5px;font-weight:600;color:var(--muted)}
+.tl-timing.conflict{color:var(--warn);font-weight:750}
+.tl-logs{display:inline-flex;align-items:center;gap:3px;color:var(--info)}
+.tl-actions{display:flex;gap:6px;margin-left:auto}
+.tl-act{width:28px;height:28px;padding:0;display:grid;place-items:center;border-radius:50%;border:1px solid color-mix(in srgb,var(--green) 55%,var(--line));background:transparent;color:var(--green);transition:background .15s,transform .1s}
+.tl-act:hover{background:var(--green-soft)}
+.tl-act:active{transform:scale(.94)}
+.tl-act.start{background:var(--green);border-color:var(--green);color:var(--surface)}
+.tl-act.start:hover{background:var(--green-dark)}
+
+/* free-time rows, NOW marker, conflict label: one compact line each */
+.tl-gap,.tl-now,.tl-label{align-items:center;min-height:24px}
+.tl-gap .tl-time,.tl-label .tl-time{padding-top:0}
+.tl-gap .tl-rail::before{background:repeating-linear-gradient(to bottom,var(--line) 0 4px,transparent 4px 8px)}
+.tl-gap-text{display:flex;align-items:center;gap:8px;padding:2px 0 2px 12px;font-size:11.5px;color:var(--muted)}
+.tl-gap-text b,.tl-now-line b{color:var(--green);font-size:10px;font-weight:850;letter-spacing:.06em}
+.tl-gap .tl-dot,.tl-now .tl-dot{--c:var(--green);top:50%;margin-top:-5px;width:10px;height:10px;margin-left:-5px;background:var(--green);animation:tl-pulse 1.6s ease-out infinite,tl-blink 1.6s ease-in-out infinite}
+.tl-gap.contains-now{background:color-mix(in srgb,var(--green-soft) 45%,transparent);border-radius:10px}
+.tl-now .tl-time{padding-top:0}
+.tl-now .tl-time b{color:var(--green);font-size:12px}
+.tl-now-line{display:flex;align-items:center;gap:8px;padding-left:12px}
+.tl-now-line i{flex:1;height:2px;border-radius:2px;background:var(--green)}
+.tl-label-text{display:flex;align-items:center;gap:6px;padding:4px 0 0 12px;font-size:11.5px;font-weight:700;color:var(--warn)}
+
+@media(max-width:600px){
+  .upnext{gap:8px 10px}
+  .upnext>div{order:3;flex:1 1 100%}
+  .upnext>.link-button{margin-left:auto}
+  .tl-list{--tl-time:42px;--tl-rail:18px}
+  .tl-row{column-gap:4px}
+  .tl-time b{font-size:12px}
+  .tl-time small{font-size:10.5px}
+  .tl-card{padding:8px 10px;margin:2px 0 3px}
+  .tl-time{padding-top:11px}
+  .tl-dot{top:14px}
+  .tl-name{font-size:13.5px}
+  .tl-act{width:32px;height:32px}
+  .tl-foot{gap:4px 6px}
+  .tl-timing{flex-basis:56px}
+}
+
+/* ---------- Daily tracker: same status colours, current / next highlighted ---------- */
+.tcard{--c:var(--muted)}
+.tcard.st-progress{--c:var(--st-progress);box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 40%,transparent)}
+.tcard.st-now{--c:var(--st-now)}
+.tcard.st-next{--c:var(--st-next)}
+.tcard.st-pending{--c:var(--st-pending)}
+.tcard.st-missed{--c:var(--st-missed)}
+.tcard.st-paused{--c:var(--st-paused)}
+.tcard.st-completed{--c:var(--st-completed)}
+.tcard.is-current{--accent:var(--c);background:color-mix(in srgb,var(--c) 8%,var(--surface));box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 45%,transparent),0 6px 20px color-mix(in srgb,var(--c) 12%,transparent)}
+.tcard.is-next{--accent:var(--st-next);background:color-mix(in srgb,var(--st-next) 5%,var(--surface))}
+.tcard.st-pending:not(.is-done),.tcard.st-missed:not(.is-done){--accent:var(--c)}
+.tcard.is-current .tcard-time b::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--c);animation:tl-pulse 1.6s ease-out infinite,tl-blink 1.6s ease-in-out infinite}
+.tcard-top .status-pill{flex-shrink:0}
+
+/* ---------- reminder bell (top bar + Settings) ---------- */
+.bell-button.is-on{color:var(--green)}
+.bell-button.is-off{color:var(--danger)}
+.bell-state{display:inline-grid;place-items:center}
+.bell-state.is-on{color:var(--green)}
+.bell-state.is-off{color:var(--danger)}

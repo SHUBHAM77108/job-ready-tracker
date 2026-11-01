@@ -3,9 +3,10 @@ import { CalendarDays } from "lucide-react";
 import Modal from "./Modal";
 import Button from "./Button";
 import { minTopicsPerDay, spreadTopicsAcrossDays, isLooseTopic } from "../services/scheduling";
+import DayDateField from "./DayDateField";
 
 // Gives every topic that is still in "Not on a day yet" a day, following the order the topics are saved in.
-export default function SpreadTopicsDialog({ topics, duration, defaultStartDay = 1, onCancel, onApply }) {
+export default function SpreadTopicsDialog({ topics, duration, startDate, defaultStartDay = 1, onCancel, onApply }) {
   const looseCount = useMemo(() => topics.filter((t) => isLooseTopic(t, duration)).length, [topics, duration]);
   const [startDay, setStartDay] = useState("1");
   const start = Math.max(1, Math.min(duration, Number(startDay) || 1));
@@ -20,7 +21,7 @@ export default function SpreadTopicsDialog({ topics, duration, defaultStartDay =
         <span>{plan.perDay} topic{plan.perDay === 1 ? "" : "s"} per day. Only the topic’s day changes — no tasks are created, and nothing is deleted.</span>
       </div></div>
       <div className="form-two follow-fields">
-        <label>Start from day<input type="number" min="1" max={duration} value={startDay} onChange={(e) => setStartDay(e.target.value)} /></label>
+        <DayDateField label="Start from" day={startDay} onDay={(d) => setStartDay(String(d))} startDate={startDate} duration={duration} />
         <label>Topics per day<input type="number" min={minPer} max="12" value={perDay || String(per)} onChange={(e) => setPerDay(e.target.value)} /></label>
       </div>
       {minPer > 1 && <div className="notice-box">Your plan is {duration} days, so at least {minPer} topics per day are needed to fit all {plan.count}. To use 1 per day, make the plan longer in Settings first.</div>}

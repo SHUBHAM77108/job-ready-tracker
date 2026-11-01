@@ -5,7 +5,9 @@ import Button from "../components/Button";
 import ProgressBar from "../components/ProgressBar";
 import { realLogs } from "../components/TaskDetail";
 import { isActive } from "../services/scheduling";
-import { dayDate, formatDate, pct, roadmapDayForDate } from "../utils/dates";
+import { unfinishedCounts } from "../services/dashboardSchedule";
+import { useNow } from "../hooks/useNow";
+import { dayDate, formatDate, localDateString, pct, roadmapDayForDate } from "../utils/dates";
 
 const FILTERS = [["all", "All days"], ["complete", "Fully done"], ["unfinished", "Unfinished"], ["notes", "Notes / logs"]];
 const monthLabel = key => new Date(`${key}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
@@ -14,6 +16,8 @@ export default function History({ state, setSelectedDay, navigate }) {
   const startDate = state.settings.startDate;
   const duration = Number(state.settings.durationDays) || 60;
   const today = roadmapDayForDate(startDate);
+  const clock = useNow(60000);
+  const todayDate = localDateString(clock), nowMin = clock.getHours() * 60 + clock.getMinutes();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
   const [upcoming, setUpcoming] = useState(false);
@@ -21,9 +25,9 @@ export default function History({ state, setSelectedDay, navigate }) {
 
   const entries = useMemo(() => Object.entries(state.days).map(([d, v]) => {
     const day = Number(d), tasks = (v?.tasks || []).filter(isActive);
-    return { day, tasks, total: tasks.length, done: tasks.filter(t => t.status === "completed").length,
+    return { day, tasks, total: tasks.length, done: tasks.filter(t => t.status === "completed").length, ...unfinishedCounts(tasks, dayDate(startDate, day), todayDate, nowMin),
       logs: tasks.reduce((n, t) => n + realLogs(t).length, 0), note: (v?.note || "").trim(), leetcode: Number(v?.leetcode) || 0 };
-  }).filter(e => e.day >= 1 && e.day <= duration && (upcoming || e.day <= today) && (e.total || e.note || e.leetcode)), [state.days, duration, today, upcoming]);
+  }).filter(e => e.day >= 1 && e.day <= duration && (upcoming || e.day <= today) && (e.total || e.note || e.leetcode)), [state.days, duration, today, upcoming, startDate, todayDate, nowMin]);
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -63,7 +67,7 @@ export default function History({ state, setSelectedDay, navigate }) {
           {o && <div className="month-body">{rows.map(e => <button type="button" className="history-row" key={e.day} onClick={() => open(e.day)}>
             <span className="hist-day"><b>{e.day}</b><small>Day</small></span>
             <span className="hist-main"><strong>{formatDate(dayDate(startDate, e.day))}</strong><span className="hist-bar"><ProgressBar value={pct(e.done, e.total)} /></span></span>
-            <span className="hist-meta"><span className="hist-count">{e.done} / {e.total} tasks</span>{e.logs > 0 && <span className="hist-chip" title="Work logs"><NotebookPen size={12} /> {e.logs}</span>}{e.note && <span className="hist-chip" title="Has notes"><FileText size={12} /></span>}</span>
+            <span className="hist-meta"><span className="hist-count">{e.done} / {e.total} tasks</span>{e.missed > 0 && <span className="hist-chip bad" title="Time is over and not completed">{e.missed} not completed</span>}{e.pending > 0 && <span className="hist-chip pend" title="Time is over, can still be finished">{e.pending} pending</span>}{e.logs > 0 && <span className="hist-chip" title="Work logs"><NotebookPen size={12} /> {e.logs}</span>}{e.note && <span className="hist-chip" title="Has notes"><FileText size={12} /></span>}</span>
             <b className="hist-arrow">→</b>
           </button>)}</div>}
         </div>;

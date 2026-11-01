@@ -1,18 +1,27 @@
 import { useState } from "react";
 import { BarChart3, BookOpen, CalendarCheck, Cloud, Eye, EyeOff } from "lucide-react";
 import Button from "../components/Button";
-import { firebaseEnabled } from "../firebase";
+import { firebaseEnabled, isAndroidWebView } from "../firebase";
 import ActivityHeatmap, { HeatmapLegend } from "../components/ActivityHeatmap";
-import { AUTH_ERROR_KEY } from "../hooks/useAuth";
 import { loginWithEmail, loginWithGoogle, registerWithEmail, resetPassword } from "../services/authService";
 
 // One screen, no scrolling: the card is compact, the heading shrinks on short screens, optional text hides itself.
 export default function AuthPage() {
-  const [mode,setMode]=useState("login"),[name,setName]=useState(""),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[show,setShow]=useState(false),[error,setError]=useState(()=>{try{const raw=sessionStorage.getItem(AUTH_ERROR_KEY);if(!raw)return "";sessionStorage.removeItem(AUTH_ERROR_KEY);return friendlyError(JSON.parse(raw));}catch{return "";}}),[info,setInfo]=useState(""),[busy,setBusy]=useState(false);
+  const [mode,setMode]=useState("login"),[name,setName]=useState(""),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[show,setShow]=useState(false),[error,setError]=useState(""),[info,setInfo]=useState(""),[busy,setBusy]=useState(false);
   const signup=mode==="signup";
   const switchMode=m=>{setMode(m);setError("");setInfo("");};
   const submit=async e=>{e.preventDefault();setError("");setInfo("");setBusy(true);try{if(signup)await registerWithEmail(name,email,password);else await loginWithEmail(email,password);}catch(err){setError(friendlyError(err));}finally{setBusy(false);}};
-  const google=async()=>{setError("");setInfo("");setBusy(true);try{await loginWithGoogle();}catch(err){setError(friendlyError(err));}finally{setBusy(false);}};
+  const google=async()=>{
+    setError("");
+    setInfo("");
+    if (isAndroidWebView()) {
+      setInfo("Opening Google sign-in in your browser. That browser session is separate from this in-app page; use Email & Password to sign in inside the app.");
+      window.location.href = "jobreadytracker://google-sign-in";
+      return;
+    }
+    setBusy(true);
+    try{await loginWithGoogle();}catch(err){setError(friendlyError(err));}finally{setBusy(false);};
+  };
   const forgot=async()=>{setError("");setInfo("");if(!email.trim()){setError("Pehle upar email likho, phir 'Forgot password' dabao.");return;}try{await resetPassword(email);setInfo("Password reset email bhej diya. Inbox (aur spam) check karo.");}catch(err){setError(friendlyError(err));}};
   return <main className="auth-screen"><section className="auth-card">
     <div className="auth-brand"><img className="brand-heatmap-logo" src="/Plan%20at%20a%20Glance%20Heatmap.png" alt="Job-Ready Tracker logo"/><span><strong>Job-Ready</strong><small>Tracker</small></span></div>
@@ -41,4 +50,4 @@ export default function AuthPage() {
     <div className="art-quote">Consistency beats intensity.</div>
   </aside></main>;
 }
-function friendlyError(err){const code=err?.code||"";if(code==="jr/auth-timeout"||code==="jr/auth-init"||code.includes("auth/network-request-failed"))return "Sign-in service se connect nahi ho paaya. Internet check karo aur page reload karke dobara try karo.";if(code.includes("auth/invalid-credential")||code.includes("auth/wrong-password")||code.includes("auth/user-not-found"))return "Email ya password match nahi hua. Details check karo.";if(code.includes("auth/email-already-in-use"))return "Is email ka account already hai. Login try karo.";if(code.includes("auth/weak-password"))return "Password kam se kam 6 characters ka rakho.";if(code.includes("auth/too-many-requests"))return "Bahut zyada koshish ho gayi. Thodi der baad try karo.";if(code.includes("auth/popup-closed-by-user"))return "Google sign-in popup band ho gaya. Dobara try karo.";if(code.includes("auth/network-request-failed"))return "Network error. Internet check karke dobara try karo.";if(code.includes("auth/web-storage-unsupported"))return "Is browser mein storage/cookies block hain. Cookies allow karo ya private mode band karo.";if(code.includes("auth/popup-blocked"))return "Browser ne popup block kiya. Popup allow karke dobara try karo.";if(code.includes("auth/unauthorized-domain"))return "Firebase Authentication → Settings → Authorized domains mein is site ka domain (localhost / live domain) add karo.";if(code.includes("auth/operation-not-allowed"))return "Firebase console mein ye sign-in method (Email/Password ya Google) enable karo.";return err?.message||"Sign-in failed. Please try again.";}
+function friendlyError(err){const code=err?.code||"";if(code.includes("auth/missing-initial-state"))return "Google sign-in session reset ho gayi. Chrome browser mein dobara 'Continue with Google' click karo.";if(code==="jr/auth-timeout"||code==="jr/auth-init"||code.includes("auth/network-request-failed"))return "Sign-in service se connect nahi ho paaya. Internet check karo aur page reload karke dobara try karo.";if(code.includes("auth/invalid-credential")||code.includes("auth/wrong-password")||code.includes("auth/user-not-found"))return "Email ya password match nahi hua. Details check karo.";if(code.includes("auth/email-already-in-use"))return "Is email ka account already hai. Login try karo.";if(code.includes("auth/weak-password"))return "Password kam se kam 6 characters ka rakho.";if(code.includes("auth/too-many-requests"))return "Bahut zyada koshish ho gayi. Thodi der baad try karo.";if(code.includes("auth/popup-closed-by-user"))return "Google sign-in popup band ho gaya. Dobara try karo.";if(code.includes("auth/network-request-failed"))return "Network error. Internet check karke dobara try karo.";if(code.includes("auth/web-storage-unsupported"))return "Is browser mein storage/cookies block hain. Cookies allow karo ya private mode band karo.";if(code.includes("auth/popup-blocked"))return "Browser ne popup block kiya. Popup allow karke dobara try karo.";if(code.includes("auth/unauthorized-domain"))return "Firebase Authentication → Settings → Authorized domains mein is site ka domain (localhost / live domain) add karo.";if(code.includes("auth/operation-not-allowed"))return "Firebase console mein ye sign-in method (Email/Password ya Google) enable karo.";return err?.message||"Sign-in failed. Please try again.";}

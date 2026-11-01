@@ -3,6 +3,7 @@ import { CalendarClock, X } from "lucide-react";
 import Button from "./Button";
 import { ALL_WEEKDAYS, WEEKDAY_NAMES, weekdayOf } from "../services/scheduling";
 import { dayDate, formatDate } from "../utils/dates";
+import DayDateField from "./DayDateField";
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
@@ -23,17 +24,17 @@ export default function TimetableFollowDialog({title="How many days will you fol
       <div className="panel-heading"><div><h2>{title}</h2><p>This timetable has {taskCount} task{taskCount===1?"":"s"} with no Day column, so it repeats on every day you choose below.</p></div><button className="icon-button" type="button" aria-label="Close" onClick={onCancel}><X size={18}/></button></div>
       <div className="follow-presets">
         <button type="button" className="filter-chip" onClick={()=>preset(1,duration)}>Whole plan · {duration} days</button>
-        <button type="button" className="filter-chip" onClick={()=>preset(defaults.startDay,duration-defaults.startDay+1)}>Rest of plan from Day {defaults.startDay}</button>
+        <button type="button" className="filter-chip" onClick={()=>preset(defaults.startDay,duration-defaults.startDay+1)}>Rest of plan from {formatDate(dayDate(startDate,defaults.startDay))}</button>
         <button type="button" className="filter-chip" onClick={()=>preset(start,7)}>7 days</button>
         <button type="button" className="filter-chip" onClick={()=>preset(start,30)}>30 days</button>
       </div>
       <div className="form-two follow-fields">
-        <label>Start from day<input type="number" min="1" max={duration} value={startRaw} onChange={e=>setStartRaw(e.target.value)}/></label>
-        <label>Number of days<input type="number" min="1" max={duration-start+1} value={countRaw} onChange={e=>setCountRaw(e.target.value)}/></label>
+        <DayDateField label="Start from" day={start} onDay={d=>setStartRaw(String(d))} startDate={startDate} duration={duration}/>
+        <DayDateField label="Until (last day)" day={end} onDay={d=>setCountRaw(String(d-start+1))} startDate={startDate} duration={duration} minDay={start}/>
       </div>
       <div className="weekday-row" role="group" aria-label="Days of the week"><span>Repeat on</span>{[1,2,3,4,5,6,0].map(d=><button type="button" key={d} className={`weekday-chip ${weekdays.includes(d)?"selected":""}`} aria-pressed={weekdays.includes(d)} onClick={()=>toggle(d)}>{WEEKDAY_NAMES[d]}</button>)}</div>
       <div className="follow-summary"><CalendarClock size={18}/><div>
-        <strong>Day {start} ({formatDate(dayDate(startDate,start))}) → Day {end} ({formatDate(dayDate(startDate,end))})</strong>
+        <strong>{formatDate(dayDate(startDate,start))} to {formatDate(dayDate(startDate,end))} ({end-start+1} days)</strong>
         <span>{dayList.length} day{dayList.length===1?"":"s"} × {taskCount} task{taskCount===1?"":"s"} = {dayList.length*taskCount} tasks will appear in Daily Tracker, Analytics and Activity history.</span>
       </div></div>
       {clashes>0&&<div className="warn-box">{clashes} task{clashes===1?"":"s"} would overlap with tasks you already have. You will be asked before anything is added.</div>}

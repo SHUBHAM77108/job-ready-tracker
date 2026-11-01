@@ -1,0 +1,38 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
+        android:icon="@drawable/job_ready_tracker_icon"
+        android:label="Job-Ready Tracker"
+        android:roundIcon="@drawable/job_ready_tracker_icon"
+        android:theme="@style/TrackerTheme"
+        android:usesCleartextTraffic="false">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".TrackerWebActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
+
+        <receiver
+            android:name=".ActivityHeatmapWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/activity_heatmap_widget_info" />
+        </receiver>
+    </application>
+</manifest>

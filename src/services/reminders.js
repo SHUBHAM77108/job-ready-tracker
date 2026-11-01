@@ -1,26 +1,38 @@
-// Task reminders. Pure "what is due now" logic + helpers to show a notification.
+// Browser notifications are delivered through the service worker. Mobile browsers
+// require this path; the Notification constructor alone is not reliable there.
 import { isUnstarted, toMin } from "./scheduling";
 import { localDateString, roadmapDayForDate } from "../utils/dates";
 
-export const notificationsSupported = () => typeof window !== "undefined" && "Notification" in window;
+export const isAndroidTrackerWebView = () => typeof navigator !== "undefined" && /JobReadyTrackerAndroidWebView/i.test(navigator.userAgent);
+export const notificationsSupported = () => typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator;
+
+// True only when reminders are switched on AND this browser can really deliver them (used for the bell icons).
+export const remindersActive = settings => !!settings?.remindersEnabled && !isAndroidTrackerWebView() && notificationsSupported() && Notification.permission === "granted";
 
 export async function registerReminderWorker() {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
-  try { return await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`); } catch { return null; }
-}
-
-// Prefer the service worker (works on Android and installed apps); fall back to a plain Notification.
-export async function showReminder(title, options = {}) {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator) || !window.isSecureContext) return null;
   try {
-    const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : null;
-    if (reg && reg.active) { await reg.showNotification(title, options); return true; }
-  } catch { /* fall through */ }
-  try { new Notification(title, options); return true; } catch { return false; }
+    await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
+    const registration = await navigator.serviceWorker.ready;
+    return typeof registration.showNotification === "function" ? registration : null;
+  } catch { return null; }
 }
 
-const GRACE_MIN = 10; // an app opened late does not replay reminders older than this
+export async function showReminder(title, options = {}) {
+  if (!notificationsSupported()) return { ok: false, reason: "unsupported" };
+  if (Notification.permission !== "granted") return { ok: false, reason: Notification.permission === "denied" ? "denied" : "permission" };
+  try {
+    const registration = await registerReminderWorker();
+    if (!registration) return { ok: false, reason: "worker" };
+    const icon = `${import.meta.env.BASE_URL}app-icon-v2-192.png`;
+    await registration.showNotification(title, { icon, badge: icon, ...options });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error?.name === "NotAllowedError" ? "denied" : "display" };
+  }
+}
 
-// Tasks of today that should notify right now. `fired` is a Set of keys already shown today.
+const GRACE_MIN = 10;
 export function dueReminders(state, now = new Date(), fired = new Set()) {
   const settings = state.settings || {};
   const duration = Number(settings.durationDays) || 60;

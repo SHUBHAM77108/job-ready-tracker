@@ -1,0 +1,553 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+--- a/app/build.gradle.kts	2026-10-29 18:43:28.952365704 +0000
++++ b/app/build.gradle.kts	2026-10-29 18:43:28.955061937 +0000
+@@ -25,6 +25,7 @@
+ dependencies {
+     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
+     implementation("androidx.core:core-ktx:1.16.0")
++    implementation("androidx.activity:activity:1.10.1")
+     implementation(platform("com.google.firebase:firebase-bom:33.10.0"))
+     implementation("com.google.firebase:firebase-auth")
+     implementation("com.google.firebase:firebase-firestore")
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml	2026-10-29 18:43:28.950257439 +0000
++++ b/app/src/main/AndroidManifest.xml	2026-10-29 18:43:28.956317482 +0000
+@@ -3,6 +3,7 @@
+ 
+     <application
+         android:allowBackup="false"
++        android:enableOnBackInvokedCallback="true"
+         android:icon="@drawable/job_ready_tracker_icon"
+         android:label="Job-Ready Tracker"
+         android:roundIcon="@drawable/job_ready_tracker_icon"
+diff --git a/app/src/main/java/com/buildskills/jobreadytracker/MainActivity.kt b/app/src/main/java/com/buildskills/jobreadytracker/MainActivity.kt
+--- a/app/src/main/java/com/buildskills/jobreadytracker/MainActivity.kt	2026-10-29 18:43:28.950576110 +0000
++++ b/app/src/main/java/com/buildskills/jobreadytracker/MainActivity.kt	2026-10-29 18:43:28.956470992 +0000
+@@ -59,6 +59,10 @@
+         super.onCreate(savedInstanceState)
+         auth = FirebaseAuth.getInstance()
+         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
++        // A restored native session goes straight to the tracker: no login UI is built and no landing screen shows.
++        if (auth.currentUser != null && launchTracker()) return
++        // Otherwise (signed out, or Firebase still restoring its session) wait for the first auth callback;
++        // the login form only appears once that callback confirms there is no user.
+         buildScreen()
+         authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+             onNativeAuthStateChanged(firebaseAuth.currentUser != null)
+@@ -243,21 +247,30 @@
+             return
+         }
+         loginScroll.visibility = View.GONE
++        launchTracker()
++    }
++
++    private fun launchTracker(): Boolean {
+         HeatmapRefreshWork.schedulePeriodic(this)
+         HeatmapRefreshWork.refresh(this)
+-        openTrackerWeb()
++        return openTrackerWeb()
+     }
+ 
+-    private fun openTrackerWeb() {
+-        if (trackerLaunchStarted || isFinishing || isDestroyed || auth.currentUser == null) return
++    /** Returns true when the tracker screen was started. Touches the login UI only if it was built. */
++    private fun openTrackerWeb(): Boolean {
++        if (trackerLaunchStarted || isFinishing || isDestroyed || auth.currentUser == null) return false
+         trackerLaunchStarted = true
+-        try {
++        return try {
+             startActivity(Intent(this, TrackerWebActivity::class.java))
+             finish()
++            true
+         } catch (error: Exception) {
+             trackerLaunchStarted = false
+-            loginScroll.visibility = View.VISIBLE
+-            showError("Could not open the in-app tracker. Please try again.")
++            if (::loginScroll.isInitialized) {
++                loginScroll.visibility = View.VISIBLE
++                showError("Could not open the in-app tracker. Please try again.")
++            }
++            false
+         }
+     }
+ 
+diff --git a/app/src/main/java/com/buildskills/jobreadytracker/TrackerDownloads.kt b/app/src/main/java/com/buildskills/jobreadytracker/TrackerDownloads.kt
+--- a/app/src/main/java/com/buildskills/jobreadytracker/TrackerDownloads.kt	1970-01-01 00:00:00.000000000 +0000
++++ b/app/src/main/java/com/buildskills/jobreadytracker/TrackerDownloads.kt	2026-10-29 18:43:28.956554826 +0000
+@@ -0,0 +1,122 @@
++package com.buildskills.jobreadytracker
++
++import android.app.DownloadManager
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.content.IntentFilter
++import android.net.Uri
++import android.os.Build
++import android.os.Environment
++import android.webkit.CookieManager
++import android.webkit.URLUtil
++import android.widget.Toast
++import androidx.core.content.ContextCompat
++
++internal enum class DownloadKind { HTTPS, BLOB, DATA, UNSUPPORTED }
++
++internal fun classifyDownloadUrl(url: String?): DownloadKind {
++    val lower = url?.trim()?.lowercase().orEmpty()
++    return when {
++        lower.startsWith("https://") -> DownloadKind.HTTPS
++        lower.startsWith("blob:") -> DownloadKind.BLOB
++        lower.startsWith("data:") -> DownloadKind.DATA
++        else -> DownloadKind.UNSUPPORTED
++    }
++}
++
++/** Keeps a server-suggested name usable as a single file name: no separators, control or reserved characters. */
++internal fun safeDownloadFileName(raw: String?): String {
++    val cleaned = raw.orEmpty()
++        .replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_")
++        .trim()
++        .trimStart('.')
++    return cleaned.ifBlank { "download" }
++}
++
++/**
++ * Plain https downloads go to the system DownloadManager (cookies and user-agent forwarded, system notification).
++ * blob: and data: exports are deliberately NOT handled yet: that needs the web app's export code and a vetted
++ * bridge, so they only show a message.
++ */
++internal class TrackerDownloads(private val context: Context) {
++    private val manager by lazy { context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager }
++    private val enqueued = mutableSetOf<Long>()
++    private var registered = false
++
++    private val receiver = object : BroadcastReceiver() {
++        override fun onReceive(receiverContext: Context, intent: Intent) {
++            if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
++            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
++            // Only react to downloads this screen started; the real result is read back from DownloadManager.
++            if (!enqueued.remove(id)) return
++            showResult(id)
++        }
++    }
++
++    fun register() {
++        if (registered) return
++        // DownloadManager's completion broadcast comes from another app, so the receiver must be exported.
++        ContextCompat.registerReceiver(
++            context,
++            receiver,
++            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
++            ContextCompat.RECEIVER_EXPORTED,
++        )
++        registered = true
++    }
++
++    fun unregister() {
++        if (!registered) return
++        registered = false
++        runCatching { context.unregisterReceiver(receiver) }
++    }
++
++    fun onDownloadStart(url: String?, userAgent: String?, contentDisposition: String?, mimeType: String?) {
++        when (classifyDownloadUrl(url)) {
++            DownloadKind.HTTPS -> enqueue(url.orEmpty(), userAgent, contentDisposition, mimeType)
++            DownloadKind.BLOB, DownloadKind.DATA -> toast("Saving this kind of export isn't supported in the app yet.")
++            DownloadKind.UNSUPPORTED -> toast("This download can't be saved from the app.")
++        }
++    }
++
++    private fun enqueue(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
++        val fileName = safeDownloadFileName(URLUtil.guessFileName(url, contentDisposition, mimeType))
++        val request = DownloadManager.Request(Uri.parse(url))
++            .setTitle(fileName)
++            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
++        mimeType?.takeIf { it.isNotBlank() }?.let { request.setMimeType(it) }
++        userAgent?.takeIf { it.isNotBlank() }?.let { request.addRequestHeader("User-Agent", it) }
++        // CookieManager returns only the cookies that belong to this exact URL.
++        CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }?.let { request.addRequestHeader("Cookie", it) }
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
++            // Public Downloads folder needs no storage permission through DownloadManager on Android 10+.
++            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
++        } else {
++            // Android 7-9 would need WRITE_EXTERNAL_STORAGE for the public folder; use the app's own folder instead.
++            request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
++        }
++        try {
++            enqueued += manager.enqueue(request)
++            toast("Downloading $fileName")
++        } catch (_: Exception) {
++            toast("Couldn't start the download.")
++        }
++    }
++
++    private fun showResult(id: Long) {
++        val outcome = manager.query(DownloadManager.Query().setFilterById(id))?.use { cursor ->
++            if (cursor.moveToFirst()) {
++                cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) to
++                    cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TITLE))
++            } else null
++        } ?: return
++        val (status, title) = outcome
++        toast(
++            if (status == DownloadManager.STATUS_SUCCESSFUL) "Download finished: $title (see Downloads)"
++            else "Download failed: $title"
++        )
++    }
++
++    private fun toast(message: String) = Toast.makeText(context, message, Toast.LENGTH_LONG).show()
++}
+diff --git a/app/src/main/java/com/buildskills/jobreadytracker/TrackerUploads.kt b/app/src/main/java/com/buildskills/jobreadytracker/TrackerUploads.kt
+--- a/app/src/main/java/com/buildskills/jobreadytracker/TrackerUploads.kt	1970-01-01 00:00:00.000000000 +0000
++++ b/app/src/main/java/com/buildskills/jobreadytracker/TrackerUploads.kt	2026-10-29 18:43:28.956518147 +0000
+@@ -0,0 +1,71 @@
++package com.buildskills.jobreadytracker
++
++/**
++ * Pure helpers for <input type="file" accept="..."> handling.
++ * They map the web `accept` list to MIME types for the system document picker and re-check
++ * whatever the user actually picked, because providers often report CSV/XLSX inconsistently.
++ */
++internal object TrackerUploads {
++    private const val OCTET_STREAM = "application/octet-stream"
++
++    private val extensionMimeTypes = mapOf(
++        "csv" to listOf("text/csv", "text/comma-separated-values", "application/csv", "application/vnd.ms-excel"),
++        "xlsx" to listOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
++        "xls" to listOf("application/vnd.ms-excel"),
++        "pdf" to listOf("application/pdf"),
++        "png" to listOf("image/png"),
++        "jpg" to listOf("image/jpeg"),
++        "jpeg" to listOf("image/jpeg"),
++        "gif" to listOf("image/gif"),
++        "webp" to listOf("image/webp"),
++        "txt" to listOf("text/plain"),
++        "json" to listOf("application/json"),
++    )
++
++    /** Splits comma-separated entries, lowercases, and drops blanks and duplicates. */
++    fun normalize(acceptTypes: Array<String>?): List<String> = acceptTypes.orEmpty()
++        .flatMap { it.split(',') }
++        .map { it.trim().lowercase() }
++        .filter { it.isNotEmpty() }
++        .distinct()
++
++    /** MIME types to offer the system picker. No (or wildcard) accept list means any file. */
++    fun pickerMimeTypes(accept: List<String>): Array<String> {
++        if (accept.isEmpty() || "*/*" in accept) return arrayOf("*/*")
++        val types = linkedSetOf<String>()
++        var hasExtension = false
++        for (token in accept) {
++            if (token.startsWith(".")) {
++                hasExtension = true
++                extensionMimeTypes[token.drop(1)]?.let { types += it }
++            } else if (token.contains('/')) {
++                types += token
++            }
++        }
++        // Extension-only filters: some providers label such files application/octet-stream.
++        if (hasExtension) types += OCTET_STREAM
++        return if (types.isEmpty()) arrayOf("*/*") else types.toTypedArray()
++    }
++
++    /** Re-checks a picked file's reported MIME type and display name against the web `accept` list. */
++    fun matches(accept: List<String>, mimeType: String?, fileName: String?): Boolean {
++        if (accept.isEmpty() || "*/*" in accept) return true
++        val mime = mimeType?.lowercase()
++        val ext = fileName?.substringAfterLast('.', "")?.lowercase().orEmpty()
++        val mimesForExt = extensionMimeTypes[ext].orEmpty()
++        return accept.any { token ->
++            when {
++                token.startsWith(".") -> {
++                    val wanted = token.drop(1)
++                    ext == wanted || (mime != null && mime in extensionMimeTypes[wanted].orEmpty())
++                }
++                token.endsWith("/*") -> {
++                    val prefix = token.dropLast(1)
++                    (mime?.startsWith(prefix) == true) || mimesForExt.any { it.startsWith(prefix) }
++                }
++                token.contains('/') -> mime == token || token in mimesForExt
++                else -> false
++            }
++        }
++    }
++}
+diff --git a/app/src/main/java/com/buildskills/jobreadytracker/TrackerWebActivity.kt b/app/src/main/java/com/buildskills/jobreadytracker/TrackerWebActivity.kt
+--- a/app/src/main/java/com/buildskills/jobreadytracker/TrackerWebActivity.kt	2026-10-29 18:43:28.950598226 +0000
++++ b/app/src/main/java/com/buildskills/jobreadytracker/TrackerWebActivity.kt	2026-10-29 18:43:28.956490754 +0000
+@@ -1,7 +1,6 @@
+ package com.buildskills.jobreadytracker
+ 
+ import android.annotation.SuppressLint
+-import android.app.Activity
+ import android.app.AlertDialog
+ import android.content.Intent
+ import android.graphics.Color
+@@ -11,6 +10,7 @@
+ import android.os.Bundle
+ import android.os.Handler
+ import android.os.Looper
++import android.provider.OpenableColumns
+ import android.view.Gravity
+ import android.view.View
+ import android.view.WindowManager
+@@ -22,6 +22,7 @@
+ import android.webkit.WebResourceResponse
+ import android.webkit.WebSettings
+ import android.webkit.WebView
++import android.webkit.ValueCallback
+ import android.webkit.WebViewClient
+ import android.widget.Button
+ import android.widget.FrameLayout
+@@ -29,6 +30,9 @@
+ import android.widget.ProgressBar
+ import android.widget.TextView
+ import android.widget.Toast
++import androidx.activity.ComponentActivity
++import androidx.activity.OnBackPressedCallback
++import androidx.activity.result.contract.ActivityResultContracts
+ import androidx.core.view.ViewCompat
+ import androidx.core.view.WindowCompat
+ import androidx.core.view.WindowInsetsCompat
+@@ -36,7 +40,7 @@
+ import com.google.firebase.auth.FirebaseAuth
+ 
+ /** Hosts the existing React app inside an in-app WebView with native status bar blending. */
+-class TrackerWebActivity : Activity() {
++class TrackerWebActivity : ComponentActivity() {
+     private lateinit var root: FrameLayout
+     private lateinit var webView: WebView
+     private lateinit var navigationBarBackdrop: View
+@@ -45,6 +49,23 @@
+     private var mainFrameFailed = false
+     private val themedTextViews = mutableListOf<TextView>()
+     private val themeHandler = Handler(Looper.getMainLooper())
++    private val downloads by lazy { TrackerDownloads(this) }
++    private var leavingToLogin = false
++
++    // If the native Firebase session ends (sign-out, revoked account), leave the WebView for the login screen.
++    private val authStateListener = FirebaseAuth.AuthStateListener { auth ->
++        if (auth.currentUser == null) returnToLogin()
++    }
++
++    // File upload: exactly one pending WebView callback at a time; it is always settled, with null on cancel.
++    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
++    private var fileChooserAccept: List<String> = emptyList()
++    private val pickSingleFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
++        finishFileChooser(listOfNotNull(uri))
++    }
++    private val pickMultipleFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
++        finishFileChooser(uris)
++    }
+ 
+     private val syncTheme = object : Runnable {
+         override fun run() {
+@@ -78,6 +99,15 @@
+         val restored = savedInstanceState?.let { webView.restoreState(it) != null } ?: false
+         if (!restored) webView.loadUrl(TRACKER_URL)
+         ViewCompat.requestApplyInsets(root)
++
++        // Android 16 / targetSdk 36 no longer calls onBackPressed(); back is handled through the dispatcher.
++        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
++            override fun handleOnBackPressed() {
++                if (::webView.isInitialized && webView.canGoBack()) webView.goBack() else showExitOptions()
++            }
++        })
++        downloads.register()
++        FirebaseAuth.getInstance().addAuthStateListener(authStateListener)
+     }
+ 
+     override fun onSaveInstanceState(outState: Bundle) {
+@@ -98,15 +128,6 @@
+         super.onPause()
+     }
+ 
+-    @Suppress("DEPRECATION")
+-    override fun onBackPressed() {
+-        if (::webView.isInitialized && webView.canGoBack()) {
+-            webView.goBack()
+-        } else {
+-            showExitOptions()
+-        }
+-    }
+-
+     private fun showExitOptions() {
+         AlertDialog.Builder(this)
+             .setTitle("Leave tracker?")
+@@ -128,11 +149,22 @@
+                 HeatmapData.empty(),
+             )
+         }
++        returnToLogin()
++    }
++
++    private fun returnToLogin() {
++        if (leavingToLogin || isFinishing) return
++        leavingToLogin = true
+         startActivity(Intent(this, MainActivity::class.java))
+         finish()
+     }
+ 
+     override fun onDestroy() {
++        FirebaseAuth.getInstance().removeAuthStateListener(authStateListener)
++        downloads.unregister()
++        // Never leave a WebView file-chooser request unanswered.
++        fileChooserCallback?.onReceiveValue(null)
++        fileChooserCallback = null
+         themeHandler.removeCallbacksAndMessages(null)
+         if (::webView.isInitialized) {
+             (webView.parent as? android.view.ViewGroup)?.removeView(webView)
+@@ -179,6 +211,15 @@
+                     this@TrackerWebActivity.progress.progress = newProgress
+                     this@TrackerWebActivity.progress.visibility = if (newProgress >= 100 || mainFrameFailed) View.GONE else View.VISIBLE
+                 }
++
++                override fun onShowFileChooser(
++                    view: WebView?,
++                    filePathCallback: ValueCallback<Array<Uri>>?,
++                    fileChooserParams: WebChromeClient.FileChooserParams?,
++                ): Boolean = this@TrackerWebActivity.showFileChooser(view?.url, filePathCallback, fileChooserParams)
++            }
++            setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
++                downloads.onDownloadStart(url, userAgent, contentDisposition, mimeType)
+             }
+         }
+         root.addView(webView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+@@ -342,6 +383,59 @@
+         openExternal(Uri.parse(TRACKER_URL))
+     }
+ 
++    private fun showFileChooser(
++        pageUrl: String?,
++        callback: ValueCallback<Array<Uri>>?,
++        params: WebChromeClient.FileChooserParams?,
++    ): Boolean {
++        if (callback == null) return false
++        // A new request settles any older one first; WebView stops offering the chooser if a callback is left hanging.
++        fileChooserCallback?.onReceiveValue(null)
++        fileChooserCallback = null
++        val trustedPage = pageUrl != null && TrackerWebNavigation.classify(pageUrl) == TrackerLinkTarget.IN_APP
++        if (!trustedPage || params?.mode == WebChromeClient.FileChooserParams.MODE_SAVE) {
++            callback.onReceiveValue(null)
++            return true
++        }
++        val accept = TrackerUploads.normalize(params?.acceptTypes)
++        fileChooserCallback = callback
++        fileChooserAccept = accept
++        val mimeTypes = TrackerUploads.pickerMimeTypes(accept)
++        try {
++            // System document picker: no storage permission needed.
++            if (params?.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) pickMultipleFiles.launch(mimeTypes)
++            else pickSingleFile.launch(mimeTypes)
++        } catch (_: Exception) {
++            fileChooserCallback = null
++            callback.onReceiveValue(null)
++            Toast.makeText(this, "No file picker is available on this device.", Toast.LENGTH_LONG).show()
++        }
++        return true
++    }
++
++    private fun finishFileChooser(picked: List<Uri>) {
++        val callback = fileChooserCallback ?: return
++        fileChooserCallback = null
++        // Only content:// URIs from the picker are passed on, and each file is re-checked against the page's accept list.
++        val allowed = picked.filter { it.scheme == "content" && matchesAccept(it) }
++        if (picked.isNotEmpty() && allowed.size < picked.size) {
++            Toast.makeText(this, "Some files were skipped because their type isn't accepted here.", Toast.LENGTH_LONG).show()
++        }
++        callback.onReceiveValue(if (allowed.isEmpty()) null else allowed.toTypedArray())
++    }
++
++    private fun matchesAccept(uri: Uri): Boolean {
++        val accept = fileChooserAccept
++        if (accept.isEmpty()) return true
++        val name = runCatching {
++            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
++                if (cursor.moveToFirst()) cursor.getString(0) else null
++            }
++        }.getOrNull()
++        val mime = runCatching { contentResolver.getType(uri) }.getOrNull()
++        return TrackerUploads.matches(accept, mime, name)
++    }
++
+     private fun openExternal(uri: Uri) {
+         try {
+             startActivity(Intent(Intent.ACTION_VIEW, uri))
+diff --git a/app/src/test/java/com/buildskills/jobreadytracker/TrackerDownloadsTest.kt b/app/src/test/java/com/buildskills/jobreadytracker/TrackerDownloadsTest.kt
+--- a/app/src/test/java/com/buildskills/jobreadytracker/TrackerDownloadsTest.kt	1970-01-01 00:00:00.000000000 +0000
++++ b/app/src/test/java/com/buildskills/jobreadytracker/TrackerDownloadsTest.kt	2026-10-29 18:43:28.958156137 +0000
+@@ -0,0 +1,26 @@
++package com.buildskills.jobreadytracker
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++class TrackerDownloadsTest {
++    @Test
++    fun classifiesDownloadUrlsByScheme() {
++        assertEquals(DownloadKind.HTTPS, classifyDownloadUrl("https://example.com/a.csv"))
++        assertEquals(DownloadKind.HTTPS, classifyDownloadUrl("  HTTPS://example.com/a.csv"))
++        assertEquals(DownloadKind.BLOB, classifyDownloadUrl("blob:https://build-skills-9320a.web.app/1234"))
++        assertEquals(DownloadKind.DATA, classifyDownloadUrl("data:text/csv;base64,YQ=="))
++        assertEquals(DownloadKind.UNSUPPORTED, classifyDownloadUrl("http://example.com/a.csv"))
++        assertEquals(DownloadKind.UNSUPPORTED, classifyDownloadUrl("file:///sdcard/a.csv"))
++        assertEquals(DownloadKind.UNSUPPORTED, classifyDownloadUrl(null))
++    }
++
++    @Test
++    fun fileNamesCannotEscapeTheDownloadsFolder() {
++        assertEquals("report.csv", safeDownloadFileName("report.csv"))
++        assertEquals("_evil.csv", safeDownloadFileName("../evil.csv"))
++        assertEquals("a_b_c.csv", safeDownloadFileName("a/b\\c.csv"))
++        assertEquals("download", safeDownloadFileName("..."))
++        assertEquals("download", safeDownloadFileName(null))
++    }
++}
+diff --git a/app/src/test/java/com/buildskills/jobreadytracker/TrackerUploadsTest.kt b/app/src/test/java/com/buildskills/jobreadytracker/TrackerUploadsTest.kt
+--- a/app/src/test/java/com/buildskills/jobreadytracker/TrackerUploadsTest.kt	1970-01-01 00:00:00.000000000 +0000
++++ b/app/src/test/java/com/buildskills/jobreadytracker/TrackerUploadsTest.kt	2026-10-29 18:43:28.958146230 +0000
+@@ -0,0 +1,44 @@
++package com.buildskills.jobreadytracker
++
++import org.junit.Assert.assertArrayEquals
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class TrackerUploadsTest {
++    @Test
++    fun normalizeSplitsLowercasesAndDropsBlanks() {
++        assertEquals(
++            listOf(".csv", ".xlsx", "image/*"),
++            TrackerUploads.normalize(arrayOf(".CSV, .xlsx", "image/*", " ", ".csv")),
++        )
++        assertEquals(emptyList<String>(), TrackerUploads.normalize(null))
++    }
++
++    @Test
++    fun pickerMimeTypesCoverCsvXlsxImagesAndPdf() {
++        assertArrayEquals(arrayOf("*/*"), TrackerUploads.pickerMimeTypes(emptyList()))
++        assertArrayEquals(arrayOf("image/*", "application/pdf"), TrackerUploads.pickerMimeTypes(listOf("image/*", "application/pdf")))
++        val csv = TrackerUploads.pickerMimeTypes(listOf(".csv")).toList()
++        assertTrue("text/csv" in csv)
++        assertTrue("application/octet-stream" in csv)
++        val xlsx = TrackerUploads.pickerMimeTypes(listOf(".xlsx")).toList()
++        assertTrue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in xlsx)
++        assertArrayEquals(arrayOf("*/*"), TrackerUploads.pickerMimeTypes(listOf("*/*", ".csv")))
++    }
++
++    @Test
++    fun pickedFilesAreRecheckedAgainstAccept() {
++        val csvOnly = listOf(".csv")
++        assertTrue(TrackerUploads.matches(csvOnly, "application/octet-stream", "Data.CSV"))
++        assertTrue(TrackerUploads.matches(csvOnly, "text/csv", "export"))
++        assertFalse(TrackerUploads.matches(csvOnly, "application/x-msdownload", "setup.exe"))
++        assertTrue(TrackerUploads.matches(listOf("image/*"), "image/png", "a.png"))
++        assertTrue(TrackerUploads.matches(listOf("image/*"), "application/octet-stream", "a.jpg"))
++        assertFalse(TrackerUploads.matches(listOf("image/*"), "application/pdf", "a.pdf"))
++        assertTrue(TrackerUploads.matches(listOf("text/csv"), "application/octet-stream", "a.csv"))
++        assertTrue(TrackerUploads.matches(emptyList(), null, null))
++        assertFalse(TrackerUploads.matches(csvOnly, null, null))
++    }
++}

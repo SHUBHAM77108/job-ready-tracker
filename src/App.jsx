@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Menu, Moon, Search, Sun, X } from "lucide-react";
+import { Bell, BellOff, Menu } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, firebaseEnabled } from "./firebase";
 import { logout } from "./services/authService";
+import { remindersActive } from "./services/reminders";
+import { retargetTopicTasks } from "./services/scheduling";
 import { useAuth } from "./hooks/useAuth";
 import { useTracker } from "./hooks/useTracker";
 import Sidebar from "./components/Sidebar";
@@ -23,6 +25,7 @@ import Settings from "./pages/Settings";
 import Analytics from "./pages/Analytics";
 import History from "./pages/History";
 import WidgetPage from "./pages/WidgetPage";
+import NativeSsoCallback from "./pages/NativeSsoCallback";
 import { localDateString, roadmapDayForDate } from "./utils/dates";
 import { loadLocalState } from "./services/storage";
 
@@ -49,19 +52,20 @@ export default function App() {
  const [mobileOpen,setMobileOpen]=useState(false);
  const [todayKey,setTodayKey]=useState(()=>localDateString());
  useEffect(()=>{const tick=()=>{const k=localDateString();setTodayKey(prev=>prev===k?prev:k);};const id=window.setInterval(tick,30000);document.addEventListener("visibilitychange",tick);return()=>{window.clearInterval(id);document.removeEventListener("visibilitychange",tick);};},[]);
- const [search,setSearch]=useState("");
+ const search=""; // the top search box was removed; pages that accept a search filter simply get an empty one
  const [toast,setToast]=useState(null);
- const [themeMode,setThemeMode]=useState(()=>localStorage.getItem("job-ready-theme")||"system");
+ const [themeMode,setThemeMode]=useState(()=>{try{const saved=localStorage.getItem("job-ready-theme");return ["system","light","dark"].includes(saved)?saved:"system";}catch{return "system";}});
  const [systemDark,setSystemDark]=useState(()=>window.matchMedia?.("(prefers-color-scheme: dark)").matches||false);
  const dark=themeMode==="system"?systemDark:themeMode==="dark";
  const setDark=value=>setThemeMode(value?"dark":"light");
  const location=useLocation(),navigate=useNavigate();
- useEffect(()=>{document.documentElement.dataset.theme=dark?"dark":"light";localStorage.setItem("job-ready-theme",themeMode);},[dark,themeMode]);
+ useEffect(()=>{document.documentElement.dataset.theme=dark?"dark":"light";try{localStorage.setItem("job-ready-theme",themeMode);}catch{}document.querySelectorAll('meta[name="theme-color"]').forEach(meta=>{meta.content=dark?"#101916":"#0b7a5b";});},[dark,themeMode]);
  useEffect(()=>{const media=window.matchMedia("(prefers-color-scheme: dark)");const onChange=e=>setSystemDark(e.matches);media.addEventListener?.("change",onChange);return()=>media.removeEventListener?.("change",onChange);},[]);
  useEffect(()=>{const fn=()=>setDemoUser({uid:"local-demo",email:"local-demo@jobready.local",displayName:"Local demo",isDemo:true});window.addEventListener("job-ready-demo-login",fn);return()=>window.removeEventListener("job-ready-demo-login",fn);},[]);
  useEffect(()=>{const today=roadmapDayForDate(state.settings.startDate);setSelectedDay(Math.max(1,Math.min(Number(state.settings.durationDays)||60,today)));},[effectiveUser?.uid,state.settings.startDate,state.settings.durationDays,todayKey]);
  const flash=message=>{setToast({message,undo:state.undoItem||null});window.clearTimeout(flash.timer);flash.timer=window.setTimeout(()=>setToast(null),6500);};
- const undo=()=>{const item=state.undoItem;if(!item)return;update(s=>{const next={...s,undoItem:null};if(item.type==="roadmap"){next.roadmap=[...s.roadmap,item.item];if(item.roadmapId)next.roadmaps=(s.roadmaps||[]).map(r=>r.id===item.roadmapId?{...r,topics:[...(r.topics||[]),item.item]}:r);}if(item.type==="roadmapDays"){const back=t=>Object.prototype.hasOwnProperty.call(item.prev,t.id)?{...t,day:item.prev[t.id]}:t;next.roadmaps=(s.roadmaps||[]).map(r=>r.id===item.roadmapId?{...r,topics:(r.topics||[]).map(back)}:r);if(s.activeRoadmapId===item.roadmapId)next.roadmap=(s.roadmap||[]).map(back);}if(item.type==="project")next.projects=[item.item,...s.projects];if(item.type==="application")next.applications=[item.item,...s.applications];if(item.type==="task"){const day=item.day;next.days={...s.days,[day]:{...(s.days[day]||{}),tasks:[...(s.days[day]?.tasks||[]),item.item]}};}return next;});setToast(null);};
+ if(location.pathname==="/auth/native")return <NativeSsoCallback/>;
+ const undo=()=>{const item=state.undoItem;if(!item)return;update(s=>{const next={...s,undoItem:null};if(item.type==="roadmap"){next.roadmap=[...s.roadmap,item.item];if(item.roadmapId)next.roadmaps=(s.roadmaps||[]).map(r=>r.id===item.roadmapId?{...r,topics:[...(r.topics||[]),item.item]}:r);if(item.tasks?.length){const days={...s.days};for(const entry of item.tasks){days[entry.day]={...(days[entry.day]||{}),tasks:[...(days[entry.day]?.tasks||[]),entry.item]};}next.days=days;}}if(item.type==="roadmapDays"){const back=t=>Object.prototype.hasOwnProperty.call(item.prev,t.id)?{...t,day:item.prev[t.id]}:t;next.roadmaps=(s.roadmaps||[]).map(r=>r.id===item.roadmapId?{...r,topics:(r.topics||[]).map(back)}:r);if(s.activeRoadmapId===item.roadmapId)next.roadmap=(s.roadmap||[]).map(back);next.days=retargetTopicTasks(s.days,item.prev);}if(item.type==="project")next.projects=[item.item,...s.projects];if(item.type==="application")next.applications=[item.item,...s.applications];if(item.type==="tasks"){const days={...s.days};for(const entry of item.items||[]){days[entry.day]={...(days[entry.day]||{}),tasks:[...(days[entry.day]?.tasks||[]),entry.item]};}next.days=days;}if(item.type==="task"){const day=item.day;next.days={...s.days,[day]:{...(s.days[day]||{}),tasks:[...(s.days[day]?.tasks||[]),item.item]}};}return next;});setToast(null);};
  const signOut=async()=>{if(firebaseEnabled&&auth)await logout();else setDemoUser(null);};
  const actualToday=roadmapDayForDate(state.settings.startDate);
  useEffect(()=>{if(!effectiveUser)return;const handler=()=>{const n=roadmapDayForDate(state.settings.startDate);setSelectedDay(Math.max(1,Math.min(Number(state.settings.durationDays)||60,n)));};window.addEventListener("job-ready-go-today",handler);return()=>window.removeEventListener("job-ready-go-today",handler);},[effectiveUser?.uid,state.settings.startDate,state.settings.durationDays]);
@@ -71,9 +75,10 @@ export default function App() {
  if(location.pathname==="/widget")return withSplash(<WidgetPage state={state}/>);
  const titleMap={"/":"Overview","/daily":"Daily tracker","/roadmap":"Learning roadmap","/projects":"Projects","/applications":"Job applications","/resources":"Timetable & resources","/settings":"Settings","/analytics":"Analytics","/history":"Activity history"};
  const routeTitle=titleMap[location.pathname]||"Workspace";
+ const bellOn=remindersActive(state.settings);
  return withSplash(<div className="app-shell">
  <Sidebar mobileOpen={mobileOpen} onNavigate={()=>setMobileOpen(false)} roadmapCount={state.roadmap.length} projectCount={state.projects.length}/>
- <main className="main-area"><header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setMobileOpen(true)} aria-label="Open menu"><Menu size={20}/></button><div className="breadcrumbs">Workspace <span>›</span> <strong>{routeTitle}</strong></div></div><div className="topbar-actions"><label className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search workspace…"/></label><button className="icon-button" title="Toggle theme" onClick={()=>setThemeMode(v=>v==="system"?(systemDark?"light":"dark"):v==="dark"?"light":"dark")}>{dark?<Sun size={18}/>:<Moon size={18}/>}</button><button className="icon-button" title="Reminder settings" onClick={()=>navigate("/settings")}><Bell size={18}/></button><ProfileMenu user={effectiveUser} onLogout={signOut}/></div></header>
+ <main className="main-area"><header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={()=>setMobileOpen(true)} aria-label="Open menu"><Menu size={20}/></button><div className="breadcrumbs">Workspace <span>›</span> <strong>{routeTitle}</strong></div></div><div className="topbar-actions"><button className={`icon-button bell-button ${bellOn?"is-on":"is-off"}`} title={bellOn?"Reminders are on":"Reminders are off — open settings"} aria-label={bellOn?"Reminders are on. Open reminder settings":"Reminders are off. Open reminder settings"} onClick={()=>navigate("/settings")}>{bellOn?<Bell size={18}/>:<BellOff size={18}/>}</button><ProfileMenu user={effectiveUser} onLogout={signOut}/></div></header>
  <div className="page-content">{syncError&&<div className="sync-warning">{syncError}</div>}{toast&&<div className="toast"><span>{toast.message}</span>{state.undoItem&&<button onClick={undo}>Undo</button>}<button aria-label="Dismiss" onClick={()=>setToast(null)}>×</button></div>}{state.undoItem&&!toast&&<div className="toast"><span>Item removed.</span><button onClick={undo}>Undo</button><button aria-label="Dismiss" onClick={()=>update(s=>({...s,undoItem:null}))}>×</button></div>}
  <Routes>
  <Route path="/" element={<Dashboard state={state} update={update} flash={flash} selectedDay={selectedDay} setSelectedDay={setSelectedDay} navigate={navigate}/>}/>

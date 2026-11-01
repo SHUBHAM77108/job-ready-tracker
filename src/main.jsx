@@ -7,6 +7,8 @@ import "./styles/layout.css";
 import "./styles/pages.css";
 import "./styles/polish.css";
 import "./styles/brand.css";
+import "./styles/schedule.css";
+import "./styles/notes.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

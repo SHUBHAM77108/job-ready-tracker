@@ -4,7 +4,9 @@ import PageHeader from "../components/PageHeader";
 import ProgressBar from "../components/ProgressBar";
 import PlanGlance from "../components/PlanGlance";
 import { isActive } from "../services/scheduling";
-import { dayDate, formatDate, pct, roadmapDayForDate } from "../utils/dates";
+import { unfinishedCounts } from "../services/dashboardSchedule";
+import { useNow } from "../hooks/useNow";
+import { dayDate, formatDate, localDateString, pct, roadmapDayForDate } from "../utils/dates";
 
 const sourceOf = t => (t.source === "roadmap" || t.topicId) ? "Roadmap topics" : t.scheduleId ? "Timetable & rules" : "Added manually";
 const fmtMin = m => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
@@ -15,6 +17,8 @@ export default function Analytics({ state, setSelectedDay, navigate }) {
   const duration = Number(state.settings.durationDays) || 60;
   const today = roadmapDayForDate(startDate);
   const lastDay = Math.min(duration, today);          // days that have started
+  const clock = useNow(60000);
+  const todayDate = localDateString(clock), nowMin = clock.getHours() * 60 + clock.getMinutes();
   const [range, setRange] = useState("30");
   const [shown, setShown] = useState(10);
 
@@ -22,8 +26,9 @@ export default function Analytics({ state, setSelectedDay, navigate }) {
   const perDay = useMemo(() => Array.from({ length: duration }, (_, i) => {
     const tasks = (state.days[i + 1]?.tasks || []).filter(isActive);
     return { day: i + 1, tasks, total: tasks.length, done: tasks.filter(t => t.status === "completed").length,
+      ...unfinishedCounts(tasks, dayDate(startDate, i + 1), todayDate, nowMin),
       minutes: tasks.reduce((n, t) => n + (t.workLogs || []).reduce((m, l) => m + (Number(l.minutes) || 0), 0), 0) };
-  }), [state.days, duration]);
+  }), [state.days, duration, startDate, todayDate, nowMin]);
 
   const options = [["7", "Last 7 days"], ["30", "Last 30 days"], ...(lastDay > 90 ? [["90", "Last 90 days"]] : []), ...(lastDay > 180 ? [["180", "Last 180 days"]] : []), ["all", "All so far"]];
   const n = range === "all" ? lastDay : Math.min(Number(range), lastDay);
@@ -33,6 +38,7 @@ export default function Analytics({ state, setSelectedDay, navigate }) {
   const total = rangeDays.reduce((s, d) => s + d.total, 0);
   const done = rangeDays.reduce((s, d) => s + d.done, 0);
   const minutes = rangeDays.reduce((s, d) => s + d.minutes, 0);
+  const pendingTotal = rangeDays.reduce((s, d) => s + d.pending, 0), missedTotal = rangeDays.reduce((s, d) => s + d.missed, 0);
   const activeDays = rangeDays.filter(d => d.done > 0).length;
   const streak = useMemo(() => {
     let d = lastDay, count = 0;
@@ -68,7 +74,7 @@ export default function Analytics({ state, setSelectedDay, navigate }) {
 
       <div className="stats-grid four">
         <Stat icon={Percent} label="Completion rate" value={`${pct(done, total)}%`} helper={`${activeDays} active day${activeDays === 1 ? "" : "s"}`} />
-        <Stat icon={CheckCircle2} tone="blue" label="Tasks completed" value={`${done} / ${total}`} helper="in this range" />
+        <Stat icon={CheckCircle2} tone="blue" label="Tasks completed" value={`${done} / ${total}`} helper={pendingTotal || missedTotal ? `${missedTotal} not completed · ${pendingTotal} pending` : "in this range"} />
         <Stat icon={Flame} tone="orange" label="Current streak" value={`${streak} day${streak === 1 ? "" : "s"}`} helper="days with a finished task" />
         <Stat icon={Clock3} tone="purple" label="Time logged" value={minutes ? fmtMin(minutes) : "—"} helper="from work logs" />
       </div>
@@ -87,7 +93,7 @@ export default function Analytics({ state, setSelectedDay, navigate }) {
       <section className="panel">
         <div className="panel-heading"><div><h2>Daily completion</h2><p>{list.length} day{list.length === 1 ? "" : "s"} with tasks in this range, newest first</p></div></div>
         {list.length ? <>
-          {list.slice(0, shown).map(d => <button type="button" className="analytics-day clickable-row" key={d.day} onClick={() => open(d.day)}><div><strong>Day {d.day}</strong><small>{formatDate(dayDate(startDate, d.day))}</small></div><ProgressBar value={pct(d.done, d.total)} /><b>{pct(d.done, d.total)}%</b></button>)}
+          {list.slice(0, shown).map(d => <button type="button" className="analytics-day clickable-row" key={d.day} onClick={() => open(d.day)}><div><strong>Day {d.day}</strong><small>{formatDate(dayDate(startDate, d.day))}{(d.missed > 0 || d.pending > 0) && ` · ${[d.missed > 0 && `${d.missed} not completed`, d.pending > 0 && `${d.pending} pending`].filter(Boolean).join(", ")}`}</small></div><ProgressBar value={pct(d.done, d.total)} /><b>{pct(d.done, d.total)}%</b></button>)}
           {list.length > shown && <div className="show-more"><button type="button" className="button secondary" onClick={() => setShown(s => s + 20)}>Show 20 more</button><button type="button" className="link-button" onClick={() => setShown(list.length)}>Show all {list.length}</button></div>}
         </> : <div className="empty-state small"><h3>No activity in this range</h3><p>Complete tasks in Daily Tracker to see progress here.</p></div>}
       </section>

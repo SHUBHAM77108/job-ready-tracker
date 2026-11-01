@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "119462712511",
+    "project_id": "build-skills-9320a",
+    "storage_bucket": "build-skills-9320a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:119462712511:android:251ab498661bf49170e20a",
+        "android_client_info": {
+          "package_name": "com.buildskills.jobreadytracker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "119462712511-kemftgo99up147rkekr1p1jiab3klekh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNA6HHNvqwAc9_nm3xjX9zS2abEpQLhxM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "119462712511-kemftgo99up147rkekr1p1jiab3klekh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

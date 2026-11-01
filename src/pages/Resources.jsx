@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
-import { CalendarClock, CalendarDays, FileSpreadsheet, History, Pencil, Plus, Repeat, Save, Search, Trash2, Undo2, Upload } from "lucide-react";
+import { CalendarClock, CalendarDays, Eye, FileSpreadsheet, History, Pencil, Plus, Repeat, Save, Search, Trash2, Undo2, Upload } from "lucide-react";
 import PageHeader from "../components/PageHeader";
 import Button from "../components/Button";
 import ImportPreview from "../components/ImportPreview";
 import ConflictDialog from "../components/ConflictDialog";
 import Modal from "../components/Modal";
 import TimetableFollowDialog from "../components/TimetableFollowDialog";
+import TimetableViewModal from "../components/TimetableViewModal";
 import { parseScheduleFile } from "../services/importService";
-import { makeId, roadmapDayForDate } from "../utils/dates";
+import { dayDate, formatDate, makeId, roadmapDayForDate } from "../utils/dates";
+import DayDateField from "../components/DayDateField";
 import {
   ALL_WEEKDAYS, WEEKDAY_NAMES, applyRule, applyTimetable, findConflicts, previewConflicts,
   removeTimetableTasks, ruleOccurs, timeLabel, timetableDays, undoImportTasks,
@@ -37,6 +39,7 @@ export default function Resources({ state, update, flash }) {
   const [conflict, setConflict] = useState(null);    // clash popup
   const [removeTarget, setRemoveTarget] = useState(null);
   const [undoAsk, setUndoAsk] = useState(false);
+  const [viewTarget, setViewTarget] = useState(null);   // timetable shown in the big table pop-up
 
   const schedules = state.schedules || [];
   const match = (s) => !search || `${s.name} ${s.description || ""} ${s.sourceFile || ""}`.toLowerCase().includes(search.toLowerCase());
@@ -178,7 +181,7 @@ export default function Resources({ state, update, flash }) {
       endDay: Math.max(1, Math.min(duration, Number(scheduleForm.endDay) || duration)),
       weekdays: scheduleForm.weekdays || [],
     };
-    if (rule.endDay < rule.startDay) { setError("End day must be on or after start day."); return; }
+    if (rule.endDay < rule.startDay) { setError("End date must be on or after the start date."); return; }
     const clashes = [];
     for (let d = rule.startDay; d <= rule.endDay; d++) {
       if (!ruleOccurs(rule, d, startDate)) continue;
@@ -252,16 +255,16 @@ export default function Resources({ state, update, flash }) {
           <div className="schedule-manager-copy">
             <strong>{tt.name}</strong>
             <div className="tt-chips">{tt.rows.slice(0, 4).map(r => <span key={r.key}>{r.start || "Flexible"} · {r.name}</span>)}{tt.rows.length > 4 && <span>+{tt.rows.length - 4} more</span>}</div>
-            <div className="schedule-manager-meta"><span>{tt.rows.length} tasks / day</span><span>Day {tt.startDay}–{tt.endDay} · {n} days</span><span>{weekdayLabel(tt.weekdays)}</span></div>
+            <div className="schedule-manager-meta"><span>{tt.rows.length} tasks / day</span><span>{formatDate(dayDate(startDate, tt.startDay))} to {formatDate(dayDate(startDate, tt.endDay))} · {n} days</span><span>{weekdayLabel(tt.weekdays)}</span></div>
           </div>
-          <div className="schedule-manager-actions"><Button variant="secondary" onClick={() => openChangeDays(tt)}><CalendarClock size={14} /> Change days</Button><Button variant="secondary" onClick={() => setRemoveTarget(tt)} aria-label="Delete timetable"><Trash2 size={14} /></Button></div>
+          <div className="schedule-manager-actions"><Button variant="secondary" className="tt-view-btn" onClick={() => setViewTarget(tt)}><Eye size={14} /> View timetable</Button><Button variant="secondary" onClick={() => openChangeDays(tt)}><CalendarClock size={14} /> Change days</Button><Button variant="secondary" onClick={() => setRemoveTarget(tt)} aria-label="Delete timetable"><Trash2 size={14} /></Button></div>
         </article>;
       })}</div>}
 
       {tab === "rules" && shown.length > 0 && <div className="schedule-manager-list">{shown.map(rule => <article className="schedule-manager-item" key={rule.id}>
         <span className="resource-icon"><CalendarDays size={18} /></span>
         <div className="schedule-manager-copy"><strong>{rule.name}</strong>{rule.description && <p>{rule.description}</p>}
-          <div className="schedule-manager-meta"><span>{rule.recurrence === "once" ? "One-time" : rule.recurrence === "custom" ? "Every other day" : rule.recurrence}</span><span>{rule.start || "Flexible"}{rule.end ? `–${rule.end}` : ""}</span><span>Day {rule.startDay}–{rule.endDay}</span>{rule.recurrence === "weekly" && <span>{weekdayLabel(rule.weekdays)}</span>}</div></div>
+          <div className="schedule-manager-meta"><span>{rule.recurrence === "once" ? "One-time" : rule.recurrence === "custom" ? "Every other day" : rule.recurrence}</span><span>{rule.start || "Flexible"}{rule.end ? `–${rule.end}` : ""}</span><span>{formatDate(dayDate(startDate, rule.startDay))} to {formatDate(dayDate(startDate, rule.endDay))}</span>{rule.recurrence === "weekly" && <span>{weekdayLabel(rule.weekdays)}</span>}</div></div>
         <div className="schedule-manager-actions"><Button variant="secondary" onClick={() => editRule(rule)}><Pencil size={14} /> Edit</Button><Button variant="secondary" onClick={() => deleteRule(rule)}><Trash2 size={14} /></Button></div>
       </article>)}</div>}
 
@@ -271,6 +274,8 @@ export default function Resources({ state, update, flash }) {
         <button className="icon-button danger" title="Remove from history (tasks stay)" onClick={() => update(st => ({ ...st, schedules: st.schedules.filter(x => x.id !== s.id) }))}><Trash2 size={15} /></button>
       </div>)}</div>}
     </section>
+
+    {viewTarget && <TimetableViewModal timetable={viewTarget} dateText={`${formatDate(dayDate(startDate, viewTarget.startDay))} to ${formatDate(dayDate(startDate, viewTarget.endDay))}`} dayCount={timetableDays(viewTarget, startDate, duration).length} onClose={() => setViewTarget(null)} />}
 
     {follow && <TimetableFollowDialog
       title={follow.mode === "edit" ? `Change days for “${follow.name}”` : undefined}
@@ -303,8 +308,8 @@ export default function Resources({ state, update, flash }) {
         <label>Task name *<input required value={scheduleForm.name} onChange={e => setScheduleForm({ ...scheduleForm, name: e.target.value })} placeholder="e.g. JavaScript practice" /></label>
         <label>Description<textarea value={scheduleForm.description || ""} onChange={e => setScheduleForm({ ...scheduleForm, description: e.target.value })} placeholder="What should you work on?" /></label>
         <div className="form-two"><label>Start time<input type="time" value={scheduleForm.start} onChange={e => setScheduleForm({ ...scheduleForm, start: e.target.value })} /></label><label>End time<input type="time" value={scheduleForm.end} onChange={e => setScheduleForm({ ...scheduleForm, end: e.target.value })} /></label></div>
-        <div className="form-two"><label>Frequency<select value={scheduleForm.recurrence} onChange={e => setScheduleForm({ ...scheduleForm, recurrence: e.target.value })}><option value="once">One-time</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="custom">Custom (every other day)</option></select></label><label>Start day<input type="number" min="1" max={duration} value={scheduleForm.startDay} onChange={e => setScheduleForm({ ...scheduleForm, startDay: e.target.value })} /></label></div>
-        <div className="form-two"><label>End day<input type="number" min="1" max={duration} value={scheduleForm.endDay} onChange={e => setScheduleForm({ ...scheduleForm, endDay: e.target.value })} /></label>
+        <div className="form-two"><label>Frequency<select value={scheduleForm.recurrence} onChange={e => setScheduleForm({ ...scheduleForm, recurrence: e.target.value })}><option value="once">One-time</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="custom">Custom (every other day)</option></select></label><DayDateField label="Start date" day={scheduleForm.startDay} onDay={d => setScheduleForm({ ...scheduleForm, startDay: d })} startDate={startDate} duration={duration} /></div>
+        <div className="form-two"><DayDateField label="End date" day={scheduleForm.endDay} onDay={d => setScheduleForm({ ...scheduleForm, endDay: d })} startDate={startDate} duration={duration} minDay={Number(scheduleForm.startDay) || 1} />
           {scheduleForm.recurrence === "weekly" && <div className="weekday-field"><span>Weekdays</span><div className="weekday-row">{[1, 2, 3, 4, 5, 6, 0].map(d => { const on = (scheduleForm.weekdays || []).includes(d); return <button type="button" key={d} className={`weekday-chip ${on ? "selected" : ""}`} aria-pressed={on} onClick={() => setScheduleForm({ ...scheduleForm, weekdays: on ? scheduleForm.weekdays.filter(x => x !== d) : [...(scheduleForm.weekdays || []), d] })}>{WEEKDAY_NAMES[d]}</button>; })}</div></div>}
         </div>
         {error && <div className="error-box">{error}</div>}

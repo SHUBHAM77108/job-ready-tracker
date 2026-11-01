@@ -2,21 +2,26 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle, BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Lock, NotebookPen,
-  FileSpreadsheet, Pencil, Play, Plus, Repeat, Save, Search, Star, Trash2,
+  FileSpreadsheet, Pencil, Play, Plus, Repeat, Save, Star, Trash2,
 } from "lucide-react";
 import PageHeader from "../components/PageHeader";
 import Button from "../components/Button";
 import Modal from "../components/Modal";
 import ConflictDialog from "../components/ConflictDialog";
+import WhenPicker, { whenInfo } from "../components/WhenPicker";
 import TaskDetail, { realLogs } from "../components/TaskDetail";
+import StickyNotes from "../components/StickyNotes";
+import RoadmapSlotLine from "../components/RoadmapSlotLine";
 import {
   MAX_PLAN_DAYS, changeDuration, clusterTasks, findConflicts, isActive, isDayLocked, overlapKind, overlapText,
-  priorityOf, setTopicCompleted, timeLabel,
+  isRoadmapSlot, priorityOf, setTopicCompleted, timeLabel, topicsOnDay,
 } from "../services/scheduling";
-import { dayDate, formatDate, makeId, pct, roadmapDayForDate } from "../utils/dates";
+import { STATE_LABEL, resolveTaskStates } from "../services/dashboardSchedule";
+import { useNow } from "../hooks/useNow";
+import { dayDate, formatDate, localDateString, makeId, pct, roadmapDayForDate } from "../utils/dates";
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-const STATUS_OPTIONS = [["upcoming", "Upcoming"], ["ready", "Ready"], ["progress", "In progress"], ["paused", "Paused"], ["completed", "Completed"], ["pending", "Pending"], ["skipped", "Skipped"]];
+const STATUS_OPTIONS = [["upcoming", "Upcoming"], ["progress", "In progress"], ["paused", "Paused"], ["completed", "Completed"], ["pending", "Pending"], ["missed", "Not completed"], ["skipped", "Skipped"]];
 const asDate = (ds) => new Date(`${ds}T00:00:00`);
 const longDate = (ds) => asDate(ds).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const weekdayShort = (ds) => asDate(ds).toLocaleDateString("en-IN", { weekday: "short" });
@@ -26,10 +31,11 @@ const sourceOf = (t) => (t.source === "roadmap" || t.topicId) ? "roadmap" : t.sc
 
 export default function DailyTracker({ state, update, selectedDay, setSelectedDay, flash }) {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [targetDay, setTargetDay] = useState(selectedDay);
+  const [repeat, setRepeat] = useState("once");           // once = one date, every = that date through the end of the plan
+  const [targetDate, setTargetDate] = useState(() => dayDate(state.settings.startDate, selectedDay));
+  const [repeatDelete, setRepeatDelete] = useState(null);   // repeating task the user is deleting
   const [detail, setDetail] = useState(null);
   const [conflict, setConflict] = useState(null);   // {destination, hits, task}
   const [pick, setPick] = useState("none");         // which clashing task gets priority
@@ -44,7 +50,13 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
   const day = state.days[selectedDay] || { tasks: [], note: "" };
   const tasks = Array.isArray(day.tasks) ? day.tasks : [];
   const detailTask = detail ? tasks.find(t => t.id === detail) || null : null;
-  const filtered = useMemo(() => tasks.filter(t => !search || `${t.name} ${t.description}`.toLowerCase().includes(search.toLowerCase())), [tasks, search]);
+  // Same status engine as the Overview page: in progress / not started / next / upcoming / pending / not completed.
+  const clock = useNow();
+  const todayDate = localDateString(clock);
+  const nowMin = clock.getHours() * 60 + clock.getMinutes();
+  const { states, current: currentTask, next: nextTask } = useMemo(() => resolveTaskStates(tasks, date, todayDate, nowMin), [tasks, date, todayDate, nowMin]);
+  const slotTopics = useMemo(() => topicsOnDay(state, selectedDay), [state.roadmaps, state.roadmap, state.activeRoadmapId, selectedDay]);
+  const viewOf = task => states.get(task.id) || task.status || "upcoming";
   const roadmapTasks = tasks.filter(t => sourceOf(t) === "roadmap");
   // A brand-new account has nothing yet: show a clear starting point instead of an empty "Day 1 of N" calendar.
   const hasAnyData = useMemo(() => Object.values(state.days || {}).some(d => (d?.tasks || []).length || (d?.note || "").trim())
@@ -90,16 +102,33 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
       if (task?.topicId && (next === "completed" || task.status === "completed")) ns = setTopicCompleted(ns, task.topicId, next === "completed");
       return ns;
     });
-    flash(`Task updated: ${next}`);
+    flash(`Task updated: ${STATE_LABEL[next] || next}`);
   };
   const toggleLearned = task => status(task.id, task.status === "completed" ? "upcoming" : "completed");
   const pauseResume = task => { const paused = task.status === "paused"; changeTasks(old => old.map(t => t.id === task.id ? { ...t, status: paused ? "progress" : "paused", ...(paused ? { resumedAt: new Date().toISOString() } : { pausedAt: new Date().toISOString() }) } : t)); flash(paused ? "Task resumed" : "Task paused"); };
-  const deleteTask = task => { changeTasks(old => old.filter(t => t.id !== task.id)); update(s => ({ ...s, undoItem: { type: "task", day: selectedDay, item: task } })); flash("Task deleted. You can undo this action."); };
+  const repeatCopies = task => Object.entries(state.days).flatMap(([d, v]) => (v?.tasks || []).filter(t => t.repeatId && t.repeatId === task.repeatId).map(t => ({ day: Number(d), item: t })));
+  const deleteTask = task => { if (task.repeatId && repeatCopies(task).length > 1) { setRepeatDelete(task); return; } deleteOne(task); };
+  const deleteRepeats = (task, scope) => {
+    const items = repeatCopies(task).filter(c => scope === "all" || c.day >= selectedDay);
+    const ids = new Set(items.map(c => c.item.id));
+    update(s => { const days = { ...s.days }; for (const k of Object.keys(days)) { const list = days[k]?.tasks || []; const keep = list.filter(t => !ids.has(t.id)); if (keep.length !== list.length) days[k] = { ...days[k], tasks: keep }; } return { ...s, days, undoItem: { type: "tasks", items } }; });
+    setRepeatDelete(null);
+    flash(`${items.length} repeating task${items.length === 1 ? "" : "s"} deleted. You can undo this action.`);
+  };
+  const deleteOne = task => { changeTasks(old => old.filter(t => t.id !== task.id)); update(s => ({ ...s, undoItem: { type: "task", day: selectedDay, item: task } })); flash("Task deleted. You can undo this action."); };
   const addWorkLog = task => { const log = { id: makeId(), note: "", url: "", minutes: 0, createdAt: new Date().toISOString() }; setAdding(false); setEditing({ ...task, workLogs: [...(task.workLogs || []), log] }); };
-  const markRemainingPending = () => changeTasks(old => old.map(t => t.status === "completed" ? t : { ...t, status: "pending" }));
+  // Only tasks whose time is over (or any unfinished task on a finished day) can be marked pending; running and future tasks are left alone.
+  const overdueIds = tasks.filter(t => t.status !== "completed" && t.status !== "pending" && ["pending", "missed"].includes(viewOf(t))).map(t => t.id);
+  const markRemainingPending = () => {
+    if (!overdueIds.length) return;
+    const ids = new Set(overdueIds);
+    changeTasks(old => old.map(t => ids.has(t.id) ? { ...t, status: "pending" } : t));
+    flash(`${ids.size} task${ids.size === 1 ? "" : "s"} marked pending`);
+  };
 
   /* ---------- add / edit with clash check ---------- */
   const closeEdit = () => { setEditing(null); setAdding(false); };
+  const openAdd = d => { setAdding(true); setRepeat("once"); setTargetDate(dayDate(startDate, clamp(d, 1, duration))); setEditing(blankTask()); };
   const commitTask = (task, destination, choice = "none", hits = []) => {
     update(s => {
       let list = s.days[destination]?.tasks || [];
@@ -113,13 +142,35 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
       return { ...s, days: { ...s.days, [destination]: { ...(s.days[destination] || {}), tasks: nextList } } };
     });
     closeEdit(); setConflict(null); setPick("none");
-    flash(adding ? `Task added to Day ${destination}` : "Task updated");
+    flash(adding ? `Task added on ${formatDate(dayDate(startDate, destination))}` : "Task updated");
+  };
+  // "Every day": one copy per day from the chosen date to the end of the plan, all sharing a repeatId so they can be removed together.
+  const addEveryDay = (task, fromDay) => {
+    const repeatId = makeId();
+    let overlaps = 0;
+    for (let d = fromDay; d <= duration; d++) if (findConflicts(state.days[d]?.tasks || [], task).length) overlaps++;
+    update(s => {
+      const days = { ...s.days };
+      for (let d = fromDay; d <= duration; d++) {
+        const old = days[d] || { tasks: [] };
+        days[d] = { ...old, tasks: [...(old.tasks || []), { ...task, id: makeId(), repeatId, status: "upcoming", workLogs: [] }] };
+      }
+      return { ...s, days };
+    });
+    closeEdit();
+    flash(`Task added every day: ${duration - fromDay + 1} days (${formatDate(dayDate(startDate, fromDay))} to ${formatDate(dayDate(startDate, duration))}).${overlaps ? ` ${overlaps} day${overlaps === 1 ? " has" : "s have"} overlapping times.` : ""}`);
   };
   const saveTask = e => {
     e.preventDefault();
     const task = { ...editing, name: editing.name.trim(), workLogs: (editing.workLogs || []).filter(l => l.note?.trim() || l.url?.trim() || Number(l.minutes) > 0) };
     if (!task.name) return;
-    const destination = adding ? (Number(targetDay) || selectedDay) : selectedDay;
+    let destination = selectedDay;
+    if (adding) {
+      const info = whenInfo({ startDate, duration, mode: repeat, date: targetDate });
+      if (!info.valid) { flash(`Pick a date between ${formatDate(info.planStart)} and ${formatDate(info.planEnd)}.`); return; }
+      if (repeat === "every") { addEveryDay(task, info.day); return; }
+      destination = info.day;
+    }
     const existing = state.days[destination]?.tasks || [];
     const original = existing.find(t => t.id === task.id);
     const timeChanged = adding || !original || original.start !== task.start || original.end !== task.end;
@@ -151,26 +202,31 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
 
   /* ---------- one task card ---------- */
   const renderCard = task => {
-    const src = sourceOf(task), isDone = task.status === "completed", pr = priorityOf(task), st = task.status || "upcoming";
+    const src = sourceOf(task), isDone = task.status === "completed", pr = priorityOf(task), st = task.status || "upcoming", view = viewOf(task);
+    const isCurrent = currentTask?.id === task.id, isNext = nextTask?.id === task.id;
+    const selectValue = ["now", "next", "upcoming"].includes(view) ? (st === "ready" ? "ready" : "upcoming") : view;
+    const upcomingLabel = view === "now" || view === "next" ? STATE_LABEL[view] : "Upcoming";
     const logs = realLogs(task), minutes = logs.reduce((n, l) => n + (Number(l.minutes) || 0), 0);
-    return <article key={task.id} className={`tcard src-${src} st-${st} ${isDone ? "is-done" : ""} ${pr === "high" ? "pri-high" : ""} ${locked ? "is-locked" : ""}`}>
+    return <article key={task.id} className={`tcard src-${src} st-${view} ${isCurrent ? "is-current" : ""} ${isNext ? "is-next" : ""} ${isDone ? "is-done" : ""} ${pr === "high" ? "pri-high" : ""} ${locked ? "is-locked" : ""}`}>
       <div className="tcard-time"><b>{task.start || "Flexible"}</b>{task.end && <small>{task.end}</small>}</div>
       <button type="button" className={`tcheck ${isDone ? "on" : ""}`} aria-pressed={isDone} aria-label={isDone ? "Mark as not done" : src === "roadmap" ? "Mark topic as learned" : "Mark as done"} onClick={guard(() => toggleLearned(task))}>{isDone && <Check size={15} />}</button>
       <div className="tcard-body">
         <div className="tcard-main" role="button" tabIndex={0} title="View details and work log" onClick={() => setDetail(task.id)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(task.id); } }}>
           <div className="tcard-top">
             <h3>{task.name}</h3>
-            <span className={`status-pill ${isDone ? "success" : st === "progress" ? "progress" : "muted"} st-${st}`}>{st}</span>
+            <span className={`status-pill st-${view}`}>{isDone && <Check size={11} />}{STATE_LABEL[view] || view}</span>
           </div>
           <div className="task-badges">
             {src === "roadmap" && <span className="src-badge roadmap"><BookOpen size={11} /> Roadmap topic</span>}
             {src === "timetable" && <span className="src-badge timetable"><Repeat size={11} /> Timetable</span>}
+            {task.repeatId && <span className="src-badge low"><Repeat size={11} /> Every day</span>}
             {pr === "high" && <span className="src-badge priority"><Star size={11} /> Priority</span>}
             {pr === "low" && <span className="src-badge low">Low priority</span>}
             {task.flexible && <span className="src-badge low">Flexible</span>}
             {logs.length > 0 && <span className="log-chip"><NotebookPen size={12} /> {logs.length} log{logs.length === 1 ? "" : "s"}{minutes > 0 ? ` · ${minutes} min` : ""}</span>}
           </div>
           {task.description && <p>{task.description}</p>}
+          {isRoadmapSlot(task) && <RoadmapSlotLine topics={slotTopics} onAdd={() => navigate("/roadmap")} />}
         </div>
         <div className="tcard-actions">
           {!isDone && st !== "progress" && <Button onClick={guard(() => status(task.id, "progress"))}><Play size={13} /> Start</Button>}
@@ -179,7 +235,7 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
           <Button variant="secondary" onClick={guard(() => addWorkLog(task))} aria-label="Log work"><Plus size={13} /><span className="hide-sm"> Log</span></Button>
           <Button variant="secondary" onClick={() => { setAdding(false); setEditing({ ...task }); }} aria-label="Edit task"><Pencil size={13} /></Button>
           <Button variant="secondary" aria-label="Delete task" title="Delete task" onClick={() => deleteTask(task)}><Trash2 size={13} /></Button>
-          <select aria-label={`Change ${task.name} status`} value={st} onChange={e => guard(status)(task.id, e.target.value)}>{STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          <select aria-label={`Change ${task.name} status`} value={selectValue} onChange={e => guard(status)(task.id, e.target.value)}>{STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{v === "upcoming" ? upcomingLabel : l}</option>)}{selectValue === "ready" && <option value="ready">Ready</option>}</select>
         </div>
       </div>
     </article>;
@@ -193,7 +249,7 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
       <h2>Nothing here yet</h2>
       <p>Your Daily tracker fills up with your own tasks. Pick a starting point — nothing is pre-filled.</p>
       <div className="daily-empty-actions">
-        <Button onClick={() => { setAdding(true); setTargetDay(clamp(today, 1, duration)); setEditing(blankTask()); }}><Plus size={15} /> Add your first task</Button>
+        <Button onClick={() => { openAdd(today); }}><Plus size={15} /> Add your first task</Button>
         <Button variant="secondary" onClick={() => navigate("/resources")}><FileSpreadsheet size={15} /> Import a timetable</Button>
         <Button variant="secondary" onClick={() => navigate("/roadmap")}><BookOpen size={15} /> Build a roadmap</Button>
       </div>
@@ -237,10 +293,9 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
             <p>{longDate(date)}</p>
             <div className="tasks-chips"><span className="chip ok"><Check size={12} /> {done} done</span><span className="chip">{openTasks} left</span>{requiredTasks.length > 0 && <span className="chip">{requiredDone}/{requiredTasks.length} required</span>}</div>
           </div>
-          <Button onClick={() => { setAdding(true); setTargetDay(selectedDay); setEditing(blankTask()); }}><Plus size={15} /> Add task</Button>
+          <Button onClick={() => { openAdd(selectedDay); }}><Plus size={15} /> Add task</Button>
         </div>
-        {tasks.length > 3 && <label className="tasks-search"><Search size={15} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search this day's tasks" aria-label="Search this day's tasks" /></label>}
-        {filtered.length ? clusterTasks(filtered).map((group, gi) => {
+        {tasks.length ? clusterTasks(tasks).map((group, gi) => {
           const clash = group.filter(isActive).length > 1;
           const cards = group.map(renderCard);
           if (!clash) return cards;
@@ -249,14 +304,12 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
             <div className="cluster-label"><AlertTriangle size={14} /> Same time · {group.length} tasks overlap{top ? ` · Priority: ${top.name}` : " · no priority chosen"}</div>
             <div className="cluster-grid">{cards}</div>
           </div>;
-        }) : <div className="empty-state small"><h3>{search ? "No matching tasks" : "No tasks for this day yet"}</h3><p>{search ? "Try another search." : "Add a task, import a timetable from Resources, or schedule roadmap topics from the Roadmap page."}</p></div>}
+        }) : <div className="empty-state small"><h3>No tasks for this day yet</h3><p>Add a task, import a timetable from Resources, or schedule roadmap topics from the Roadmap page.</p></div>}
       </section>
     </div>
 
     <aside className="daily-side">
-      <section className="panel"><div className="panel-heading"><div><h2>Daily notes</h2><p>What did you learn today?</p></div></div>
-        <textarea className="notes-area" value={day.note || ""} onChange={e => update(s => ({ ...s, days: { ...s.days, [selectedDay]: { ...(s.days[selectedDay] || {}), tasks: s.days[selectedDay]?.tasks || [], note: e.target.value } } }))} placeholder="Write notes, blockers and wins…" />
-      </section>
+      <StickyNotes day={day} onChange={(notes, joined) => update(s => ({ ...s, days: { ...s.days, [selectedDay]: { ...(s.days[selectedDay] || {}), tasks: s.days[selectedDay]?.tasks || [], notes, note: joined } } }))} />
 
       {roadmapTasks.length > 0 && <section className="panel"><div className="panel-heading"><div><h2>Roadmap topics</h2><p>{roadmapTasks.filter(t => t.status === "completed").length} of {roadmapTasks.length} learned</p></div><BookOpen size={20} /></div>
         <ul className="topic-list">{roadmapTasks.map(t => <li key={t.id}><label className="topic-row"><input type="checkbox" checked={t.status === "completed"} onChange={guard(() => toggleLearned(t))} /><span><strong>{t.name}</strong><small>{timeLabel(t)}</small></span></label><button type="button" className="link-button" onClick={() => setDetail(t.id)}>Details</button></li>)}</ul>
@@ -270,17 +323,17 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
         <div className="summary-pair"><span>Date</span><strong>{formatDate(date)}</strong></div>
         <div className="summary-pair"><span>Tasks</span><strong>{tasks.length}</strong></div>
         <div className="summary-pair"><span>Completed</span><strong>{done}</strong></div>
-        <div className="summary-pair"><span>Pending / skipped</span><strong>{tasks.filter(t => ["pending", "skipped"].includes(t.status)).length}</strong></div>
+        <div className="summary-pair"><span>Pending / skipped</span><strong>{tasks.filter(t => ["pending", "skipped"].includes(viewOf(t))).length}</strong></div>
         <div className="summary-pair"><span>Overdue (unfinished past day)</span><strong>{selectedDay < today ? tasks.filter(t => t.status !== "completed" && t.status !== "skipped").length : 0}</strong></div>
-        <Button variant="secondary" className="full-width" onClick={guard(markRemainingPending)}>Mark remaining as pending</Button>
+        <Button variant="secondary" className="full-width" disabled={!overdueIds.length} title={overdueIds.length ? "Mark unfinished tasks whose time is over as pending" : "No task has passed its time yet"} onClick={guard(markRemainingPending)}>Mark remaining as pending{overdueIds.length ? ` (${overdueIds.length})` : ""}</Button>
       </section>
     </aside></div>
 
     </>}
 
-    {editing && <Modal title={adding ? "Add task" : "Edit task / work log"} subtitle="Changes apply to this day only." onClose={closeEdit} size="lg">
+    {editing && <Modal title={adding ? "Add task" : "Edit task / work log"} subtitle={adding ? "Pick a date, or repeat the task every day." : "Changes apply to this day only."} onClose={closeEdit} size="lg">
       <form className="project-form" onSubmit={saveTask}>
-        {adding && <label>Target roadmap day<select value={targetDay} onChange={e => setTargetDay(Number(e.target.value))}>{Array.from({ length: duration }, (_, i) => <option value={i + 1} key={i}>Day {i + 1} · {formatDate(dayDate(startDate, i + 1))}</option>)}</select></label>}
+        {adding && <WhenPicker mode={repeat} onMode={setRepeat} date={targetDate} onDate={setTargetDate} startDate={startDate} duration={duration} />}
         <label>Task name *<input required value={editing.name || ""} onChange={e => setEditing({ ...editing, name: e.target.value })} /></label>
         <label>Description<textarea value={editing.description || ""} onChange={e => setEditing({ ...editing, description: e.target.value })} /></label>
         <div className="form-two"><label>Start time<input type="time" value={editing.start || ""} onChange={e => setEditing({ ...editing, start: e.target.value })} /></label><label>End time<input type="time" value={editing.end || ""} onChange={e => setEditing({ ...editing, end: e.target.value })} /></label></div>
@@ -294,6 +347,16 @@ export default function DailyTracker({ state, update, selectedDay, setSelectedDa
         </div>)}
         <div className="form-actions"><Button variant="secondary" onClick={closeEdit}>Cancel</Button><Button type="submit"><Save size={14} /> Save task</Button></div>
       </form>
+    </Modal>}
+
+    {repeatDelete && <Modal title="Delete repeating task?" subtitle={repeatDelete.name} onClose={() => setRepeatDelete(null)} size="sm">
+      <p>This task repeats every day ({repeatCopies(repeatDelete).length} days). What should be deleted?</p>
+      <div className="form-actions stack-mobile">
+        <Button variant="secondary" onClick={() => setRepeatDelete(null)}>Cancel</Button>
+        <Button variant="secondary" onClick={() => { deleteOne(repeatDelete); setRepeatDelete(null); }}>Only this day</Button>
+        <Button variant="secondary" onClick={() => deleteRepeats(repeatDelete, "later")}>This day and later</Button>
+        <Button onClick={() => deleteRepeats(repeatDelete, "all")}><Trash2 size={14} /> All {repeatCopies(repeatDelete).length} days</Button>
+      </div>
     </Modal>}
 
     {detailTask && <TaskDetail task={detailTask} state={state} dateLabel={`Day ${selectedDay} · ${formatDate(date)}`} onClose={() => setDetail(null)} onEdit={() => { setAdding(false); setEditing({ ...detailTask }); setDetail(null); }} onLogWork={guard(() => { addWorkLog(detailTask); setDetail(null); })} />}
