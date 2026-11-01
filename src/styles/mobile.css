@@ -1,0 +1,47 @@
+/* =========================================================
+   Mobile (phone) layout fixes: Learning roadmap, Timetable & resources,
+   and the filters on Timetable, Activity history, Analytics and Projects.
+   Only applies below 700px, so the desktop look is untouched.
+   ========================================================= */
+@media(max-width:700px){
+
+  /* ---------- filters: fit the screen, no sideways scrolling ---------- */
+  .range-bar[role="group"],.filter-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px}
+  .range-bar[role="group"] .filter-chip,.filter-row .filter-chip{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:42px;padding:9px 8px;text-align:center;line-height:1.25;white-space:normal}
+  .range-bar[role="group"] .filter-chip:last-of-type:nth-of-type(odd),.filter-row .filter-chip:last-child:nth-child(odd){grid-column:1/-1}
+  .range-bar .range-note{grid-column:1/-1;width:100%;margin:2px 0 0}
+
+  /* ---------- Timetable & resources: tabs ---------- */
+  .schedule-toolbar{flex-direction:column;align-items:stretch;gap:12px}
+  .seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;width:100%;max-width:none;overflow:visible}
+  .seg-btn{position:relative;display:flex;align-items:center;justify-content:center;min-height:46px;padding:8px 6px;text-align:center;white-space:normal;line-height:1.2;font-size:12px}
+  .seg-btn>svg{display:none}
+  .seg-count{position:absolute;top:-7px;right:-3px;min-width:18px;padding:1px 5px;font-size:10.5px;line-height:15px;border:2px solid var(--bg)}
+
+  /* ---------- Timetable & resources: cards ---------- */
+  .schedule-manager-item{flex-wrap:wrap;align-items:flex-start;gap:12px}
+  .schedule-manager-copy{flex:1 1 0;min-width:0}
+  .schedule-manager-actions{display:flex;flex-wrap:wrap;gap:8px;width:100%;padding-left:0}
+  .schedule-manager-actions .button{flex:1 1 auto;justify-content:center;min-width:0;padding:10px 12px;white-space:nowrap}
+  .schedule-manager-actions .button[aria-label]{flex:0 0 auto;padding:10px 14px}
+  .tt-chips span{max-width:100%}
+
+  /* ---------- Learning roadmap: tools ---------- */
+  .roadmap-tools{flex-direction:column;align-items:stretch;gap:14px}
+  .roadmap-tools .tool-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%}
+  .roadmap-tools .tool-actions .button{width:100%;justify-content:center;padding:10px 8px;font-size:12px;line-height:1.25;text-align:center;white-space:normal}
+  .roadmap-card-grid{grid-template-columns:minmax(0,1fr)}
+
+  /* ---------- Learning roadmap: topics ---------- */
+  .roadmap-day-group .summary-pair{flex-wrap:wrap;gap:6px 12px}
+  .roadmap-day-group .roadmap-list{display:grid;gap:10px;max-height:none;overflow:visible;padding:0;border:0;background:none;border-radius:0}
+  .roadmap-item{display:grid;grid-template-columns:minmax(0,1fr) 38px;gap:6px 8px;align-items:start;margin:0;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
+  .roadmap-item:hover{background:var(--bg)}
+  .roadmap-topic-main{grid-row:1/span 2;display:grid;grid-template-columns:22px minmax(0,1fr);gap:11px;align-items:start}
+  .roadmap-topic-main .topic-number{display:none}
+  .roadmap-topic-main input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--green)}
+  .roadmap-topic-main strong{display:block;font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+  .roadmap-topic-main small{display:block;margin-top:4px;font-size:12.5px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+  .roadmap-topic-main:has(input:checked) strong{color:var(--muted);text-decoration:line-through}
+  .roadmap-item>.icon-button{grid-column:2;width:38px;height:38px;opacity:1}
+}
